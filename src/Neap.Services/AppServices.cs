@@ -27,6 +27,7 @@ public static class AppServices
     public static MicFollowsHeadset MicFollow { get; private set; } = null!;
     public static SoundFollowsHeadset SoundFollow { get; private set; } = null!;
     public static UpdateService Updates { get; private set; } = null!;
+    public static FirmwareEditService Firmware { get; private set; } = null!;
 
     /// <summary>Where the headset's transmitters are looked for.</summary>
     public static IDeviceSource Devices { get; } = (IDeviceSource?)Pretend.Headset ?? SystemDevices.Instance;
@@ -47,6 +48,7 @@ public static class AppServices
         Headset = new HeadsetService(Devices, cabled: () => AudioRoute.Cable.Length > 0);
         Mix = new MixService(Headset);
         Noise = new NoiseService(Headset);
+        Firmware = new FirmwareEditService(Headset, Pretend.Firmware);
         Presets = new PresetService(Headset);
         Profiles = new ProfileService(Headset);
         AutoSwitch = Pretend.Windows is { } windows
@@ -74,8 +76,10 @@ public static class AppServices
     {
         if (_stopped) return;
         _stopped = true;
-        // Before the headset is let go, so a curve taken off for a comparison goes back on.
-        Presets?.EndAllCompares();
+        // Before the headset is let go, and waited for, so a curve taken off
+        // for a comparison goes back on: letting go stops the queue first.
+        if (Presets?.EndAllCompares() == true && Headset?.Flush(TimeSpan.FromSeconds(2)) == false)
+            AppLog.Write("equaliser: closing before the curve taken off for a comparison was all put back");
         Updates?.Dispose();
         Recorder?.Dispose();
         MicFollow?.Dispose();

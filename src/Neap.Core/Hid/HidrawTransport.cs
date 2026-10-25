@@ -48,6 +48,7 @@ public sealed class HidrawTransport : IHidTransport
     public ushort UsagePage { get; }
     public int OutputLength { get; }
     public int InputLength { get; }
+    public string Name { get; }
 
     /// <param name="device">One of <see cref="ListDevices"/>.</param>
     /// <exception cref="TransportException">The device node could not be opened.</exception>
@@ -59,6 +60,7 @@ public sealed class HidrawTransport : IHidTransport
         UsagePage = device.UsagePage;
         OutputLength = device.OutputLength;
         InputLength = device.InputLength;
+        Name = Hidraw.ProductName(System.IO.Path.Combine(Devices, System.IO.Path.GetFileName(Path)));
 
         try
         {
@@ -211,6 +213,29 @@ public sealed class HidrawTransport : IHidTransport
     [DllImport("libc", EntryPoint = "read", SetLastError = true)]
     private static extern nint Read(int descriptor, [Out] byte[] buffer, nint count);
 
+    // -- asking the transmitter itself --------------------------------------
+
+    /// <summary>Asks a transmitter, with <see cref="LinkInquiry"/>, whether the headset is linked to it.</summary>
+    /// <remarks>
+    /// The transmitter answers this itself, so an answer at all says its
+    /// control channel works, whatever the headset is doing.
+    /// </remarks>
+    /// <returns>Its answer, or null when it gave none in time.</returns>
+    /// <exception cref="AccessDeniedException">The system does not let this user open the device.</exception>
+    /// <exception cref="TransportException">The device could not be opened, written or read.</exception>
+    public static bool? AskLinked(HidDeviceInfo device, TimeSpan wait)
+    {
+        using var hid = new HidrawTransport(device);
+        hid.SendOutput(LinkInquiry.Frame);
+        long until = Environment.TickCount64 + (long)wait.TotalMilliseconds;
+        while (Environment.TickCount64 < until)
+        {
+            if (LinkInquiry.Linked(hid.GetInput()) is { } linked) return linked;
+            Thread.Sleep(4);
+        }
+        return null;
+    }
+
     // -- restarting ----------------------------------------------------------
 
     /// <summary>
@@ -235,7 +260,11 @@ public sealed class HidrawTransport : IHidTransport
     /// </remarks>
     /// <param name="device">The silent device, as listed.</param>
     /// <param name="listen">How long to go on reading after the reset.</param>
-    /// <returns>The reports with something in them that were read, in hex, report id first and trailing zeros left off.</returns>
+    /// <returns>
+    /// The reports that carried a frame, in hex, report id first and trailing
+    /// zeros left off. A report whose length byte is zero is empty, whatever is
+    /// left after it in the buffer from an earlier reply.
+    /// </returns>
     /// <exception cref="AccessDeniedException">The system does not let this user reset the device.</exception>
     /// <exception cref="TransportException">The device could not be found or reset.</exception>
     public static IReadOnlyList<string> Restart(HidDeviceInfo device, TimeSpan listen)
@@ -266,7 +295,7 @@ public sealed class HidrawTransport : IHidTransport
                 {
                     var report = hid.GetInput();
                     int end = report.AsSpan().LastIndexOfAnyExcept((byte)0) + 1;
-                    if (end > 1) heard.Add(Convert.ToHexString(report, 0, end));
+                    if (report.Length > 1 && report[1] > 0) heard.Add(Convert.ToHexString(report, 0, end));
                 }
                 catch (TransportException)
                 {
@@ -406,6 +435,30 @@ public static class Hidraw
 
     /// <summary>A whole text file of the kernel's; see <see cref="ReadBytes"/>.</summary>
     public static string ReadAll(string path) => System.Text.Encoding.UTF8.GetString(ReadBytes(path));
+
+    /// <summary>The USB device's product string, or empty when it has none.</summary>
+    /// <param name="folder">The hidraw node's folder in sysfs, such as /sys/class/hidraw/hidraw0.</param>
+    /// <remarks>
+    /// The folder's device link is the HID device. Two levels up, past the
+    /// interface, is the USB device, which holds the string. The folder is a
+    /// link too, and a link's target is taken from the path as spelled, so the
+    /// folder is resolved before the device link that climbs out of it.
+    /// </remarks>
+    public static string ProductName(string folder)
+    {
+        try
+        {
+            string real = Directory.ResolveLinkTarget(folder, returnFinalTarget: true)?.FullName ?? folder;
+            if (Directory.ResolveLinkTarget(System.IO.Path.Combine(real, "device"), returnFinalTarget: true)?.FullName is not { } hid
+                || new DirectoryInfo(hid).Parent?.Parent is not { } usb) return "";
+            string product = System.IO.Path.Combine(usb.FullName, "product");
+            return File.Exists(product) ? ReadAll(product).Trim() : "";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return "";
+        }
+    }
 
     /// <summary>The vendor and product ids in a hidraw device's uevent, or null when it has none.</summary>
     /// <remarks>

@@ -1,5 +1,146 @@
 # Decisions
 
+## 2026-10-25 — Turt takes in Neap 0.3.0, but keeps its own mini panel
+
+- **Options:** take Neap 0.3.0 whole, mini panel included; take its
+  features one by one; merge Neap 0.3.0 and keep Turt's mini panel as it is.
+- **Chosen:** merge Neap's v0.3.0 tag, and keep Turt's mini panel: the dial,
+  the rows for the microphone, noise control, spatial sound and the
+  equaliser preset, and the frosted glass look. Neap's quick tiles under a
+  slim slider are not used here (see "The mini panel as quick tiles" below).
+  Everything else in Neap 0.3.0 comes in: the redesign of the window's pages,
+  the equaliser, the loudness boost, profiles for calls, the headset's own
+  name and the fixes. "Keep high-resolution audio" goes, as it does in Neap.
+- **Why:** the owner asked for Neap 0.3.0's features with the mini panel left
+  as it is. A merge keeps Turt close to Neap, so later releases come in the
+  same way.
+- **Revisit if:** Turt's mini panel is to follow Neap's design after all.
+
+## 2026-10-23 — "Keep high-resolution audio" is out of 0.3.0
+
+- **Options:** keep it as it was; keep it but skip the reset when nothing is
+  playing and reword it; take it out of 0.3.0 and look into the dock first.
+- **Chosen:** take it out. `RingRefresh.Released` is off, so the Device page
+  has no switch for it and nothing sets the output format again, whatever
+  the settings file says.
+- **Why:** a USB capture of the dock (FINDINGS.md) showed the ring turns
+  white when the dock is told a microphone stream has started, and purple
+  again only when it is told a playback stream has started at 96 kHz. The
+  reset works only while something is playing, and restarts every
+  application's sound when it does. The owner's call was to remove it for
+  now rather than ship it half understood. The ring then turns purple by
+  itself the next time anything plays.
+- **Revisit when:** the desk investigation of the dock's ring code in
+  BACKLOG.md says whether the dock can be stopped from changing it.
+
+## 2026-10-23 — 0.3.0 ships without a Narrator pass
+
+- **Options:** read every page and dialog with Narrator before 0.3.0, as
+  CONTRIBUTING.md's release check 12 says; ship without it.
+- **Chosen:** ship without it. The accessibility check (`access`) passed on
+  every page in both themes, which covers names, target sizes, Tab order,
+  focus marks and contrast; what it cannot see is how a screen reader reads
+  a page.
+- **Why:** the owner's call, to get the release out.
+- **Revisit when:** the next release, or a report from someone using a
+  screen reader; the redesigned pages are the ones to read first.
+
+## 2026-10-23 — The Atlas Air waits for a later release
+
+- **Options:** ship 0.3.0 with the Atlas Air hidden in part, only what its
+  testers have confirmed; keep the Atlas Air out of 0.3.0 altogether.
+- **Chosen:** keep it out. `HeadsetModels.AtlasAirReleased` is off, so Neap
+  does not know the Atlas Air: its hardware, speakers and microphone are
+  those of a headset it has no support for. The code and tests for it stay,
+  and its changelog lines are kept in `docs/headsets/atlas-air.md`.
+- **Why:** the owner's call: 0.3.0 officially supports the Stealth Pro II
+  only, as the Atlas Air's testers have not yet confirmed what Neap does on
+  it, and its latest fix has had no reply.
+- **Revisit when:** the testers confirm 0.2.1.8 or a later test build.
+
+## 2026-10-22 — Firmware edits wait for a later release
+
+- **Options:** ship the Firmware page behind its Settings switch in the
+  next release; keep it out of the release altogether until Neap can write
+  a real headset.
+- **Chosen:** keep it out. `FirmwareEdit.Released` is off, so the page and
+  its switch are nowhere in the app, whatever the settings file says, and
+  nor is the Stock or Edited firmware choice for the Mode button, which
+  works as on stock firmware until the release. Only
+  a pretend run asked to open the page shows it, against the pretend
+  headset.
+- **Why:** the owner's call: release the improvements made so far first,
+  and ship firmware editing once the writer is built into Neap.
+- **Revisit when:** Neap's own writer is proven on a real headset.
+
+## 2026-10-22 — Firmware edits are ticked and applied as one plan
+
+- **Options:** an Install and a Remove button for each edit; the edits
+  ticked as a list, with Neap working out what to write.
+- **Chosen:** the list, as SP2Tools' delivery spec sets out. Each section of
+  flash a changing edit touches is written whole, as stock with every ticked
+  edit in it, so two edits in one section never undo each other, and
+  Restore to stock is unticking everything. The plan is shown before Apply.
+- **Also chosen:** an edit's sections are written in an order that leaves a
+  headset that starts wherever the write stops: new code before the call
+  that reaches it, and the call put back first. The spec writes and checks
+  one section at a time, and the brick of 15 October was a call into flash
+  with nothing in it.
+- **Revisit if:** SP2Tools' list of edits gives an edit whose sections have
+  no such order.
+
+## 2026-10-22 — Firmware edits get their own page, behind an opt-in
+
+- **Options:** leave installing firmware edits to SP2Tools; build the screens
+  in Neap now, either on the Device page or on a page of their own; write to
+  real headsets straight away, or run the whole flow on the pretend headset
+  first.
+- **Chosen:** a Firmware page of its own, in the menu only once "Firmware
+  edits" is switched on in Settings, off by default. The first version runs
+  every step and failure on the pretend headset; on a real headset it
+  shows which edits fit and writes nothing. Real writes come next, ported
+  from SP2Tools' flasher.
+- **Why:** the owner's call: firmware edits are part of Neap from here on.
+  An edit can stop a headset starting, so nothing about them shows until
+  asked for, every write is backed up first, and a failure from the write on
+  is undone from the backup.
+- **Revisit if:** an edit leaves a headset Neap cannot put back, or a tester
+  without the recovery tools needs one.
+
+## 2026-10-22 — Touch size goes by the screen, not the window
+
+- **Options:** keep drawing at touch size whenever the window is the size of
+  the Steam Deck's screen or smaller; go by the size of the screen instead.
+- **Chosen:** the screen. Touch size is for a screen of 1280 by 820 or less,
+  in device-independent pixels, for the main window and the mini panel
+  alike.
+- **Why:** the owner's window, made small on a large screen, drew its
+  switches and sliders at a finger's size, which looked too large with a
+  mouse. This replaces the reason in "Ultraviolet on a darker neutral,
+  roomier on small screens": a small window is not a touch screen.
+- **Revisit if:** someone using a touch screen larger than the Deck's asks
+  for the larger controls.
+
+## 2026-10-22 — The mini panel as quick tiles
+
+- **Options:** keep Home's controls in the panel at full size; the same
+  controls made small, as a compact list with small segmented controls;
+  quick tiles, as the system's quick settings and the Steam Deck's quick
+  menu have.
+- **Chosen:** quick tiles. The mix is a slim balance slider, game at the
+  left and chat at the right, in place of Home's dial. The microphone,
+  noise cancellation and spatial sound are three tiles in a row: a press
+  turns one off, or back on the way it was last on, and the arrow in a
+  tile's corner lists its choices. The equaliser preset is one compact row
+  under them. The panel is 320 wide.
+- **Why:** the owner found the panel full-size, not mini: it reused Home's
+  controls, and the dial alone took a third of it. Tiles are the most
+  compact form, and a pattern people know from their system. A press that
+  turns a setting off or back on, with a list for the rest, keeps every
+  choice one step away, where stepping through them would hide what comes
+  next mid-game.
+- **Revisit if:** people miss seeing noise cancellation's three modes at a
+  glance, or want the dial back in the panel.
 ## 2026-10-22 — The battery on the tray icon
 
 - **Options:** keep the battery in the tooltip only; draw the battery in

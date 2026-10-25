@@ -22,7 +22,7 @@ welcome.
 > **Own another Turtle Beach headset? Help bring it to Turt and Neap.**
 > The Stealth 600 Gen 3, 700 Gen 3, 500 and Atlas Air share the Stealth Pro II's
 > platform. A ten-minute recording made in Turt is where support for them,
-> and for others, starts. Nothing else to install, and no technical
+> and for other headsets that work with Swarm II, starts. Nothing else to install, and no technical
 > knowledge needed. **[Here's how](docs/MAPPING.md).**
 
 Not affiliated with or endorsed by Turtle Beach. Turtle Beach, Stealth Pro II
@@ -81,9 +81,10 @@ works on the Xbox edition, where Swarm II's mix isn't officially supported.
 
 Move it with the headset's chat wheel, the dial on Home, or the keyboard
 from inside a game: Ctrl + Alt + Page Down, Page Up and Home, all
-rebindable.
+rebindable. On Windows, a meter for each side shows chat speaking and the
+game's sound as you set it.
 
-![Home, with the game and chat dial, a chat app chosen, and tiles for the microphone, noise control and equaliser.](docs/screenshots/mix.png)
+![Home, with the game and chat dial, a chat app chosen, and cards for the microphone, noise cancellation and equaliser.](docs/screenshots/mix.png)
 
 ### Transparency
 
@@ -92,7 +93,7 @@ transparency mode of its own; transparency is noise cancellation at zero,
 which lets the room in. The Mode button steps through all three while Turt
 is running, or between noise cancellation and transparency only.
 
-![The Audio page, with noise control set to noise cancellation and how much of the room it blocks.](docs/screenshots/audio.png)
+![The Audio page, with noise cancellation on and how much of the room it blocks.](docs/screenshots/audio.png)
 
 ### An equaliser you can tune by ear
 
@@ -100,6 +101,8 @@ is running, or between noise cancellation and transparency only.
   the headset's ten bands, with a plot of what you'll actually hear.
 - **Test tone.** Find a frequency that stands out, then cut or boost it on
   the spot.
+- **Try things freely.** Drag the points or use the keyboard, hold Compare
+  to hear the headset flat, and undo any change.
 - **Presets stored on the headset**, for game and microphone, so they also
   appear in the phone app and survive uninstalling everything.
 
@@ -107,7 +110,7 @@ is running, or between noise cancellation and transparency only.
 
 ### Profiles for each game
 
-Save your whole setup under a name, from noise control to both equalisers.
+Save your whole setup under a name, from noise cancellation to both equalisers.
 Give a profile one or more games, and it comes on when one of them starts,
 then goes back to your default when it closes. A call app such as Teams can
 switch only while it's using the microphone, so its profile is on for calls.
@@ -120,16 +123,19 @@ See the headset's battery and whether the spare in the dock is charging,
 set the brightness of both lights, and choose the audio format. The dock's
 level is only reliable once the spare is full, so while it charges Turt says
 so with a bolt instead of a number, and a battery just put in the headset
-reads "Settling…" until its reading steadies. Turt can also put
-the dock back into high-resolution audio after an app has used the
-microphone.
+reads "Settling…" until its reading steadies.
 
 ![The Device page, with the Charging Dock in use, its spare battery and the brightness of both its lights.](docs/screenshots/dock.png)
 
 ### Everything else
 
-- **Clear status.** Connected, no sound, switched off or out of range, each
-  with what still works and the one thing to do.
+- **The microphone follows the headset.** Muted by the boom arm or the mute
+  button, it is muted on the PC too, and unmuted with it.
+- **Louder than the headset's maximum.** A loudness boost on the Audio page
+  raises the headset's own level, for when it is too quiet even at full
+  volume.
+- **Clear status.** Connected, no sound, off or out of range, each with
+  what still works and the one thing to do.
 - **Catches the wrong device.** When your system sends sound or the
   microphone somewhere the headset isn't listening, Turt names the right one.
 - **Settings Swarm II's desktop app doesn't have:** wake on motion and voice
@@ -215,8 +221,7 @@ it keeps its settings and log. If you allowed access, delete
 `/etc/udev/rules.d/70-neap.rules` too.
 
 **What isn't there yet on Linux:** Gaming Mode on the Steam Deck (use desktop
-mode), spatial sound and the audio format (Windows' own), and the Charging
-Dock's keep-high-resolution setting (a fix for a Windows problem). The keyboard shortcuts work while a
+mode), and spatial sound and the audio format (Windows' own). The keyboard shortcuts work while a
 program on X, which is most games, is in front, and not over a native Wayland
 program.
 
@@ -249,7 +254,7 @@ Found a problem with something Turt adds? [Open an issue on
 Turt](https://github.com/steeben/Turt/issues). In **Settings → Problems and
 other headsets** you can record while it happens; its **Report on GitHub**
 button still opens an issue on Neap, which is the right place for problems
-Neap has too. Have another Turtle Beach headset?
+Neap has too. Have another Turtle Beach headset that works with Swarm II?
 [Help support it](docs/MAPPING.md).
 For a security problem, see [SECURITY.md](SECURITY.md).
 

@@ -97,13 +97,21 @@ copy rewrites the sign-in shortcut and takes the headset.
 
 ## Before a release
 
+Last of all, `powershell -ExecutionPolicy Bypass -File tools\release-check.ps1`
+says whether main is ready to tag, and lists what is left if not: anything
+uncommitted, unpushed or only on GitHub, anything in the unpushed commits that
+could identify the owner, a version, changelog date or Unreleased section out
+of step, and the backlog's items for before the tag.
+
 Run through this with the release build, not a debug one. Most of what needs
 the headset can be run for you: `powershell -ExecutionPolicy Bypass -File
 tools\ui\run.ps1 hardware -Parts BFKLT` runs the real app and reads the
 headset back with the probe, covering 2, 3, 5, 6 (the modes), 7 (what the
-page says), 9 and 10 below. It brings windows to the front, stops your own
-copy of Neap for the run and puts it back, so run it when nobody is at the
-machine. Unplugging, the wheel, the Mode button, hearing the result, a game
+page says), 9 and 10 below. It stops your own copy of Neap for the run and
+puts it back. Run through `tools\pretend-quiet.ps1 -Run 'tools\ui\run.ps1
+hardware -Parts BFLT -Inside'` it works on a desktop of its own and takes
+nobody's screen; part K sends real key presses, so it runs on its own when
+nobody is at the machine. Unplugging, the wheel, the Mode button, hearing the result, a game
 in front, signing out and updating from an installed copy stay by hand.
 
 1. **Every connection state.** One row per arrangement, the same rows as
@@ -124,7 +132,9 @@ in front, signing out and updating from an installed copy stay by hand.
    | Switch it on | *Headset connected* | |
    | Unplug everything | *Nothing plugged in* | |
    | Plug in the USB-C cable, headset on | *Headset connected*; sound and microphone move to the cable | |
-   | Switch it off on the cable | *Not connected*, then *Headset off*, with nothing in between | |
+   | With only the cable plugged in, turn the chat wheel | *Headset connected*; the mix card says the chat wheel doesn't work on the cable | use the dial |
+   | Switch it off on the cable | *Not connected*, then *Headset off*, with nothing in between; Home says the headset is off throughout | switch it on |
+   | On Linux, with Neap's access rule removed, start the app | *No access* in the header, Home and the mini panel | allow access, from the notice |
    | With the settings unavailable, restart the app | still *Settings unavailable* | switch off and on |
 
    A state that no row covers is a bug, and gets a row here and a test.

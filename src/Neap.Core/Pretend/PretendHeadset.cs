@@ -97,6 +97,7 @@ public sealed class PretendHeadset : IDeviceSource
     private readonly string[][] _control;
     private readonly Queue<byte[]> _incoming = new();
     private readonly List<byte[]> _sent = new();
+    private readonly Dictionary<string, int> _reads = new(StringComparer.Ordinal);
     private readonly List<PretendWrite> _writes = new();
     private readonly List<PretendRefusal> _refusals = new();
     private readonly List<PretendRefusal> _unraised = new();
@@ -147,6 +148,7 @@ public sealed class PretendHeadset : IDeviceSource
         _atlas = true;
         foreach (int key in AtlasLacks) _values.Remove(key);
         _values[0x110] = AtlasHeadsetProduct.ToString("X4", CultureInfo.InvariantCulture);
+        _values[0x130] = "6.163.1646.0";
         _values[0x260] = _values[0x2A0];
         _values[0x2A0] = "100";
         _values[0x290] = "1";
@@ -203,6 +205,12 @@ public sealed class PretendHeadset : IDeviceSource
         get { lock (_gate) return _sent.Select(frame => frame.ToArray()).ToList(); }
     }
 
+    /// <summary>How many times each group of settings has been read.</summary>
+    public IReadOnlyDictionary<string, int> Reads
+    {
+        get { lock (_gate) return new Dictionary<string, int>(_reads, StringComparer.Ordinal); }
+    }
+
     /// <summary>Every write accepted, in order.</summary>
     public IReadOnlyList<PretendWrite> Writes
     {
@@ -215,12 +223,13 @@ public sealed class PretendHeadset : IDeviceSource
         get { lock (_gate) return _refusals.ToList(); }
     }
 
-    /// <summary>Forgets the frames, writes and refusals recorded so far.</summary>
+    /// <summary>Forgets the frames, reads, writes and refusals recorded so far.</summary>
     public void ClearRecord()
     {
         lock (_gate)
         {
             _sent.Clear();
+            _reads.Clear();
             _writes.Clear();
             _refusals.Clear();
         }
@@ -316,6 +325,8 @@ public sealed class PretendHeadset : IDeviceSource
     {
         public ushort ProductId => headset._product;
 
+        public string Name => HeadsetName;
+
         public string Describe() => $"pretend 0x{HidControl.VendorId:x4}:0x{headset._product:x4}";
 
         public void SendOutput(ReadOnlySpan<byte> report) => headset.Receive(report);
@@ -341,6 +352,10 @@ public sealed class PretendHeadset : IDeviceSource
             _sent.Add(frame);
             if (IsLoudnessCommand(frame))
                 Loudness(frame);
+            else if (_atlas && IsLightRead(frame))
+                ReplyLight();
+            else if (_atlas && IsInputsRead(frame))
+                ReplyInputs();
             else if (Unwrap(frame, out string? verb, out string? argument) is string wrong)
                 Refuse(frame, wrong);
             else if (argument is null)
@@ -409,29 +424,30 @@ public sealed class PretendHeadset : IDeviceSource
         && frame[3] == Frames.RaceStart && frame[4] == Frames.RaceCommand
         && (frame[7] | (frame[8] << 8)) == LoudnessBoost.CommandId;
 
-    /// <summary>
-    /// Answers or applies the loudness command. The Stealth Pro II replies to a
-    /// read and stores a set; the Atlas Air gives no answer, so the feature
-    /// hides on it.
-    /// </summary>
+    /// <summary>Answers or applies RACE command 0x000A: the loudness level is read and set, as SP2Tools found on both headsets (F114), and the Atlas Air's monitoring gain is read (F120).</summary>
     private void Loudness(byte[] frame)
     {
         if (frame.Length < 19) return;              // the id, then op(2), parameter(4) and value(4)
         ushort op = BinaryPrimitives.ReadUInt16BigEndian(frame.AsSpan(9, 2));
         uint param = BinaryPrimitives.ReadUInt32BigEndian(frame.AsSpan(11, 4));
         float value = BinaryPrimitives.ReadSingleBigEndian(frame.AsSpan(15, 4));
-        if (param != LoudnessBoost.InputLevelParam || !_on || _atlas) return;
+        if (!_on) return;
+
+        // The Atlas Air's stored monitoring gain is only ever read, as its firmware has it (F120).
+        if (param == Sidetone.GainParam && _atlas && op != SetOp)
+            ReplyLevel(param, Sidetone.GainFor(int.Parse(_values[0x630], CultureInfo.InvariantCulture)));
+        if (param != LoudnessBoost.InputLevelParam) return;
 
         if (op == SetOp) _loudnessDb = LoudnessBoost.ClampLevel(value);
-        else ReplyLoudness();
+        else ReplyLevel(param, _loudnessDb);
     }
 
-    /// <summary>Queues the reply to a loudness read: the parameter, then the current level.</summary>
-    private void ReplyLoudness()
+    /// <summary>Queues the reply to a read of the command: the parameter, then its level.</summary>
+    private void ReplyLevel(uint param, float db)
     {
         var payload = new byte[8];
-        BinaryPrimitives.WriteUInt32BigEndian(payload, LoudnessBoost.InputLevelParam);
-        BinaryPrimitives.WriteSingleBigEndian(payload.AsSpan(4), _loudnessDb);
+        BinaryPrimitives.WriteUInt32BigEndian(payload, param);
+        BinaryPrimitives.WriteSingleBigEndian(payload.AsSpan(4), db);
 
         int inner = 2 + payload.Length;
         var message = new byte[4 + inner];
@@ -445,11 +461,38 @@ public sealed class PretendHeadset : IDeviceSource
         Fragment(message);
     }
 
+    // -- the transmitter's light (a RACE command the transmitter answers) -----
+
+    /// <summary>Whether a frame is the read of the transmitter's light level; see <see cref="TransmitterLight"/>.</summary>
+    private static bool IsLightRead(byte[] frame) => frame.AsSpan().StartsWith(TransmitterLight.ReadFrame);
+
+    /// <summary>Queues the transmitter's answer to a light read: the level it shows, as a little-endian number.</summary>
+    /// <remarks>The transmitter answers itself, so it does whether or not the headset is on.</remarks>
+    private void ReplyLight()
+    {
+        int level = int.Parse(_values[0x430], CultureInfo.InvariantCulture);
+        var message = new byte[] { Frames.RaceStart, Frames.RaceReply, 6, 0, 0x06, 0x00, (byte)level, 0, 0, 0 };
+        Fragment(message);
+    }
+
+    private static bool IsInputsRead(byte[] frame) =>
+        frame.AsSpan().StartsWith(HeadsetInputs.ReadFrame(true)) || frame.AsSpan().StartsWith(HeadsetInputs.ReadFrame(false));
+
+    /// <summary>Queues the headset's answer to a read of its inputs: no presses yet and every wheel at rest.</summary>
+    private void ReplyInputs()
+    {
+        if (!_on) return;
+        var message = new byte[4 + 18];
+        new byte[] { Frames.RaceStart, Frames.RaceReply, 18, 0, 0x00, 0x00 }.CopyTo(message, 0);
+        Fragment(message);
+    }
+
     // -- reads --------------------------------------------------------------
 
     private void Answer(string verb)
     {
         string category = Verbs.Readers.First(pair => pair.Value == verb).Key;
+        _reads[category] = _reads.GetValueOrDefault(category) + 1;
         if (!_on || (_atlas && category == AtlasSilent)) return;
         var kvp = new StringBuilder();
 
@@ -717,11 +760,11 @@ public sealed class PretendHeadset : IDeviceSource
     {
         var values = new Dictionary<int, string>
         {
-            // Identity. The serial and firmware are made up.
+            // Identity. The serial is made up; the firmware is the build firmware edits are made for.
             [0x100] = "10F5",
             [0x110] = "229E",
             [0x120] = Serial,
-            [0x130] = "0.0.0.0",
+            [0x130] = "4.107.703.0",
             [0x140] = "0",
             [0x150] = "1",
             [0x160] = "0",

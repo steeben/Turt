@@ -170,6 +170,11 @@ public static class Registry
               note: "1 while the boom arm is flipped up, which mutes the mic. Writing "
                   + "it is accepted and does not mute: the mic went on picking up "
                   + "speech. Measured"),
+            T(0x650, "builtin_mic_muted", "Mic",
+              note: "1 while the mute button has muted the built-in microphones, used "
+                  + "while the boom microphone is off. The arm's 0x600 reads 0 "
+                  + "throughout. Writing it mutes and unmutes, with the headset's "
+                  + "tone, as the button does. Measured"),
             R(0x610, "mic_volume", "Mic", 0, 100,
               note: "a MIRROR of the Windows capture level for this microphone, not a "
                   + "control — the same arrangement as master volume. Set the Windows "
@@ -202,22 +207,28 @@ public static class Registry
             T(0x800, "atlas_superhuman_hearing", "SHH"),
             E(0x810, "atlas_shh_preset", "SHH", ShhPresetOptions),
             R(0x820, "atlas_shh_level", "SHH", 0, 100, note: "Superhuman Hearing intensity"),
-            R(0x830, "atlas_shh_unknown_830", "SHH", writable: false,
-              note: "UNCONFIRMED. The fourth value in Swarm's Superhuman Hearing group"),
+            R(0x830, "atlas_shh_bluetooth", "SHH", writable: false,
+              note: "Superhuman Hearing on or off while the headset plays over Bluetooth, "
+                  + "as 0x800 is for the transmitter. Read from the firmware (SP2Tools F122), not "
+                  + "tried; never written"),
             R(0xC00, "atlas_voice_prompt_volume", "Prm", 0, 15,
-              note: "0 to 15, the range of Swarm II's slider for it, read from its Atlas Air plugin"),
+              note: "16 steps, from -58.5 dB to -15.5 dB; anything above 15 is 15, and 50 as "
+                  + "shipped is the top step (SP2Tools F120). The range of Swarm II's slider. A "
+                  + "tester heard each step change the prompts"),
             R(0x430, "atlas_transmitter_light", "TX", 0, 100,
-              note: "UNCONFIRMED. The Atlas Air's transmitter light, from Swarm II's plugin for it. "
-                  + "On the Stealth Pro II this key is inside the second transmitter's block, which "
-                  + "only the Atlas Air's own key is ever written to"),
-            R(0xC10, "atlas_prm_unknown_c10", "Prm", writable: false,
-              note: "UNCONFIRMED. The second value in Swarm's voice prompt group"),
-            R(0x640, "mic_unknown_640", "Mic", writable: false,
-              note: "UNCONFIRMED. Candidates: boom-mic-present flag, or an AI noise "
-                  + "reduction mode sitting after the enable at 0x630"),
-            R(0x650, "mic_unknown_650", "Mic", writable: false,
-              note: "UNCONFIRMED. Candidates: high-bandwidth mic toggle, or a sidetone "
-                  + "mute flag"),
+              note: "The Atlas Air's transmitter light. A write changes the light, seen by a "
+                  + "tester; a read of it gets no answer, so the level is read from the "
+                  + "transmitter itself (SP2Tools F116; see TransmitterLight). On the Stealth Pro "
+                  + "II this key is inside the second transmitter's block, which only the Atlas "
+                  + "Air's own key is ever written to"),
+            R(0xC10, "atlas_tone_prompt_volume", "Prm", writable: false,
+              note: "the level of the headset's tones, as 0xC00 is of its voice prompts. The "
+                  + "headset holds it only until it restarts, and nothing in it reads it back "
+                  + "(SP2Tools F120); never written"),
+            R(0x640, "mic_in_use", "Mic", writable: false,
+              note: "which microphone is in use: read 1 with the boom microphone on and "
+                  + "2 with it off, in separate recordings. With the boom on, a write "
+                  + "to 0x650 is undone by the headset a moment later. Measured"),
             R(0xA00, "enc_unknown_a00", "Enc", writable: false,
               note: "UNCONFIRMED, weak. Possibly a changed-from-default flag"),
             R(0xA10, "enc_unknown_a10", "Enc", writable: false,

@@ -72,7 +72,7 @@ public partial class MiniPanelWindow : Window
     {
         InitializeComponent();
         Title = Strings.Get("Main_TrayMini");
-        Classes.Set("touch", Pretend.Touch);
+        Classes.Set("touch", Pretend.Touch || OnSmallScreen());
         BatteryHolder.Content = _battery;
         if (MiniPanel.Look(AppSettings.Current.MiniPanelLook, HighContrast.Variant(Application.Current!) is not null) == PanelLook.FrostyGlass) Frost();
         if (Pretend.Behind) ShowActivated = false;
@@ -84,10 +84,11 @@ public partial class MiniPanelWindow : Window
         OpenNeap.Click += (_, _) => OpenWindow(null);
         ChooseApps.Click += (_, _) => OpenWindow("home");
         Preset.Flyout!.Closed += (_, _) => CloseIfAway();
-        Activated += (_, _) => WindowPresence.Set(true);
+        Activated += (_, _) => WindowPresence.Set(this, true);
+        Closed += (_, _) => WindowPresence.Set(this, false);
         Deactivated += (_, _) =>
         {
-            WindowPresence.Set(false);
+            WindowPresence.Set(this, false);
             Dispatcher.UIThread.Post(CloseIfAway);
         };
         KeyDown += (_, e) =>
@@ -100,19 +101,18 @@ public partial class MiniPanelWindow : Window
         ScalingChanged += (_, _) => Place();
     }
 
-    /// <summary>
-    /// Gets the window it opens when asked, which also decides whether it is
-    /// drawn at touch size; null for a pretend run showing it alone.
-    /// </summary>
+    /// <summary>Gets the window it opens when asked; null for a pretend run showing it alone.</summary>
     public MainWindow? Main
     {
         get => _main;
-        init
-        {
-            _main = value;
-            if (value is not null) Classes.Set("touch", value.IsTouch);
-        }
+        init => _main = value;
     }
+
+    /// <summary>Whether the screen it opens on is small enough for the roomier touch size.</summary>
+    /// <remarks>The screen, as the main window does; see <see cref="Density"/>.</remarks>
+    private bool OnSmallScreen() =>
+        Screens.Primary is { } screen
+        && Density.For(screen.WorkingArea.Width / screen.Scaling, screen.WorkingArea.Height / screen.Scaling) == DensityMode.Touch;
 
     /// <summary>Gets where the pointer was when the icon was clicked, in physical pixels, or null when that is not known.</summary>
     public PixelPoint? Click { get; init; }

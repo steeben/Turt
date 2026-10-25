@@ -29,8 +29,11 @@ public static class StateCopy
         Headline.HeadsetOff => Strings.Get("State_HeadsetOff"),
         Headline.NotConnected => Strings.Get("State_NotConnected"),
         Headline.Connecting => Strings.Get("State_Connecting"),
+        Headline.NoAccess => Strings.Get("State_NoAccess"),
         _ => Strings.Get("State_NothingPluggedIn"),
     };
+
+    public static string WhatReadOnly => Strings.Get("State_WhatReadOnly");
 
     // -- settings out of reach ---------------------------------------------
 
@@ -65,6 +68,12 @@ public static class StateCopy
 
     public static string FallbackOff => Strings.Get("State_FallbackOff");
 
+    // -- a transmitter that has stopped answering ----------------------------
+
+    public static string WhatStopped => Strings.Get("State_WhatStopped");
+
+    public static string FixStopped => Strings.Get("State_FixStopped");
+
     // -- switched off, on its cable -------------------------------------------
 
     /// <summary>
@@ -81,10 +90,9 @@ public static class StateCopy
 
     /// <summary>What still moves the mix when the wheel cannot.</summary>
     /// <remarks>
-    /// The keyboard is named precisely. "Use your keyboard shortcut" is no help
-    /// to somebody who has never turned it on, which is most people: it ships
-    /// off. So this gives the actual keys when they are on, and where to turn
-    /// them on when they are not.
+    /// The keyboard is named precisely. The shortcuts ship off, so this gives
+    /// the actual keys when they are on, and only names them when they are
+    /// not: the mix card's "Keyboard shortcuts" link beside it turns them on.
     /// </remarks>
     public static string MixWithoutWheel()
     {

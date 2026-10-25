@@ -207,6 +207,79 @@ After Neap's restart, the first report read held the start-up messages
 `05 5d 0e 00 b1 2c ..`, the ones SP2Tools recorded after a real unplug
 *(measured)*: a USB reset puts the transmitter through its full start-up.
 
+SP2Tools then read the Atlas Air's decoded firmware for Neap's questions
+(F114 to F122, 22 October), with no Atlas Air on its bench, so all of what
+follows is *(research, read from the firmware)* until a tester confirms it.
+Its questions and answers are in SP2Tools' `knowledge/iceman-neap-asks.md`.
+
+- **Linux silence:** the transmitter answers a read only while its USB state
+  is "configured". A bus event that is not followed by the host setting it up
+  again can leave every reply empty until a reset; a USB suspend is the most
+  likely such event, not yet proven (F115). Nothing in the transmitter powers
+  the headset off, so the switch-off after a reset is probably the headset's
+  own reaction (F118).
+- **Link question:** RACE `0x9931` is answered by the transmitter itself, 1
+  while the headset is linked and 0 while not, so an answer proves the
+  channel works whatever the headset is doing (F115).
+- **Transmitter light:** the transmitter has no settings of its own to read,
+  so a read of the light gets nothing; RACE `0x0006` operation 3 gives the
+  level it shows, 0 to 100 (F116).
+- **Which device answered:** the transmitter keeps no copy of the headset's
+  settings, so it never answers for a headset it cannot reach (F117), unlike
+  the Stealth Pro II's.
+- **Mic monitoring:** `0x630` is its level, from -29.7 dB at 1 to 0 dB at 100,
+  with 0 off and 20 as shipped; `0x620` is its own on/off. The headset mutes
+  monitoring with the microphone, which is why `0x620` followed `0x600` above
+  (F120).
+- **Mute and the boom:** a write to `0x600` is refused while a switch on the
+  headset reads low, and that switch sets the mute at power-on. It is
+  probably the boom's; no key reports the boom, and which position reads low
+  is not known (F120).
+- **Noise gate:** `0x700` (on or off) and `0x710` (its level, 0 to 100),
+  which the headset serves as a group `NG` of their own, read like `Mic` and
+  answered at start with the saved values. The firmware serves 25 groups:
+  `Dbg Inf GSI BT TX Swm Mic NG SHH Enc Btn Prm AQG AQM CEC CG1`–`CG5`
+  `CM1`–`CM5`, with no `SAF` or `3DT`, so a read of either goes unanswered
+  (SP2Tools F125). That is why the Atlas Air reports the noise gate when it
+  changes but not in the read Neap made at start, which asked the Stealth
+  Pro II's `SAF` *(measured, in testers' recordings)*. Writes work whatever
+  the group, as they name only the key. The Bluetooth equaliser (`0x1400`
+  to `0x14C0`, `0x1640`, `0x1650`, `0x1900` to `0x1980`) is in no group, so
+  it can be written but not read back.
+- **Sensitivity:** `0x610` is a gain in the headset, which the transmitter
+  sets from the PC's microphone level (F120).
+- **Voice prompts:** `0xC00` has 16 steps, -58.5 dB to -15.5 dB; above 15 is
+  15, and 50 as shipped is the top step, which is why the tester heard no
+  change above about 20 (F120). `0xC10` is the tones' level, held only until a
+  restart.
+- **Volume:** `0x260` is the wheel, in steps of 6; `0x2A0` is the PC's level
+  coming back from it, so the two move apart for a moment on a fast turn
+  (F120).
+- **Loudness boost:** the same RACE `0x000A` command, parameter and stock
+  level (-12 dB) as the Stealth Pro II (F114).
+- **Game and chat mix:** the `0x500` to `0x540` group is Swarm II's own flags,
+  and the headset mixes game and chat only for an Xbox (F121). Chat Boost,
+  `0x270`, is a flag with no sound stage behind it (F121).
+- **Superhuman Hearing:** `0x800` to `0x820` drive the headset's own sound
+  processing; `0x830` is the same switch while on Bluetooth. A change to an
+  equaliser turns it off without a word, and it is off after every power
+  cycle (F122).
+- **Auto shut-off:** `0x280`, 0 never, 1 to 4 for 5, 10, 20 and 30 minutes, 4
+  as shipped (F122).
+- **Equalisers:** encoded as the Stealth Pro II's, ten bands from 32 Hz to
+  16 kHz in tenths of a dB, up to 9 dB either way; the bands are not kept
+  through a power cycle (F122).
+- **Dial and buttons:** the headset reports `0xA00` to `0xB20` *(measured,
+  in a tester's recording)*, one of each for a PlayStation, an Xbox and a PC.
+  The dial jobs (`0xA00` to `0xA30`) belong to a second wheel the Atlas Air
+  does not have: its one wheel is the volume, which cannot be given another
+  job, so a write is kept but does nothing, and `0xA30` is refused. The
+  button jobs (`0xB00` to `0xB20`, PC's is `0xB20`) set what one short press
+  of a button does: 0 the next game equaliser preset, 1 the noise gate on or
+  off, 2 chat boost on or off. Which button that is, and whether it is a
+  button at all rather than a power input, is not known without a test on
+  the headset (SP2Tools F126, read from the firmware).
+
 ### Which headsets share the platform
 
 Swarm II's catalogue (`settings.json`, a zlib-compressed JSON list of 140
@@ -383,7 +456,7 @@ matched to anything. Key numbers are hex; values travel as decimal strings.
 
 | Key | Meaning |
 |---|---|
-| `0x220` | the headset's name, as set in Swarm II ("My Headset") |
+| `0x220` | a name the headset keeps, "My Headset" from the factory; no recording shows Swarm II changing it. Neap shows the USB product string instead |
 | `0x230` | the wireless sound link: 2 while a transmitter sends the headset sound, 0 while none does. See [Connection state](#connection-state) |
 | `0x240` | battery, percent |
 | `0x250` | charging: 1 while the battery is filling *(measured; see below)* |
@@ -421,6 +494,8 @@ either way.
 | `0x510` | game and chat mix, 0–100. The chat wheel reports its position here. Writing it is ignored: set to 80 and then 50, it read back unchanged each time, and the wheel carried on from where it was *(measured)* |
 | `0x600` | microphone muted by the boom arm, 0/1: 1 while it is flipped up. Writing 1 with the arm down is accepted and does not mute; the microphone went on picking up speech. A Windows mute of the microphone does not change it *(both measured)* |
 | `0x610` | a **mirror** of the Windows recording level, not a control |
+| `0x640` | which microphone is in use: 1 for the boom microphone, 2 for the built-in ones. Reported at once when the boom is unplugged or plugged in while connected. With the boom in, the mute button does nothing and reports nothing, and the built-in microphones' mute at `0x650` keeps whatever it was, so only the arm counts; with it out, the arm reads 0 and only `0x650` counts *(measured)* |
+| `0x650` | the built-in microphones' mute, 0/1, used while the boom microphone is off: the headset's mute button sets it to 1 and back, and `0x600` reads 0 throughout. Writing it mutes and unmutes, with the headset's tone, as the button does, but only while the built-in microphones are in use: with the boom on, a write of 1 was reported and then undone about two seconds later. The firmware keeps this mute across restarts, unlike the arm's *(measured; keeping it from the firmware, research)* |
 | `0x620` | microphone monitoring (sidetone), 0–100 |
 | `0x630` | AI noise reduction, 0/1 |
 | `0x700` | noise gate, 0/1 |
@@ -651,6 +726,23 @@ So with the cable in, the cable is the only right place for sound, calls and
 the microphone. Not yet tried: whether the Dock's sound also cuts out the
 cable's, and all of this with the USB Transmitter.
 
+Once, the Dock was unplugged while the headset was on its cable with music
+playing. The wireless sound link went to 0, Neap carried on over the cable,
+and Windows kept sound and microphone on the cable with the music reaching
+it, but the headset played nothing *(measured, once)*. CrossPlay did not
+bring it back; switching the headset off and on did. Whether it happens
+every time is not yet known.
+
+On its cable alone, the chat wheel reaches nothing *(measured)*. Asked
+about seven times a second while it was turned both ways, `0x510` stayed at
+50 and nothing else moved but the battery, so it is neither sent nor
+readable. `0x500` read 0 there, where the Dock shows 1; set to 1 (SP2Tools
+reads it in the Atlas Air's firmware as the flag that says an app is
+listening), it held, and the wheel still changed nothing. SP2Tools finds the
+wheel's position reaching the main chip as a message from the other earcup's
+chip, which would explain it if that message travels over the wireless
+link *(inferred)*.
+
 Switched off on its cable, the headset's speakers, microphone and consumer
 control leave Windows, one vendor HID collection stays, and it keeps
 answering, battery included. Switching on or off restarts the USB connection
@@ -795,6 +887,21 @@ live only in Swarm II's own `STEALTH_PRO_II.ini` *(research)*.
   reading jumps 20 to 30 (40 straight to 70, 70 to 40, 35 to 65) *(measured)*.
 - **The Bluetooth button** drives the headset's own radio and sends nothing
   to the PC, short or long press. It is not remappable.
+- **The headset keeps a record of its inputs,** which the PC can read: RACE
+  command `0x0000` with the byte `01` (read) is answered with a flags word, one
+  bit for each press and each release, which stays set once it has happened,
+  then where each of three wheels stands, all little-endian 32-bit numbers.
+  On the Atlas Air the bits are, in pairs of press then release: 0 and 1 the
+  power button, 2 and 3 the microphone mute switch, 4 and 5 the source switch,
+  6 and 7 the button `0xB00` to `0xB20` set, 8 and 9 the media and call button,
+  10 and 11 the mute switch's second contact, then 16 to 21 each wheel up and
+  down (SP2Tools F126, read from the firmware). A Stealth Pro II on the
+  Charging Dock answers it, relayed: `flags 0x00001002, wheels 30, 41, 0`,
+  just after the app started, with its two wheels numbered *(measured)*; what
+  each of its bits is has not been worked out. On the Atlas Air, Neap writes
+  the reading to its log at connect and after each change the headset
+  reports, so a tester's recording shows which button and which switch
+  contact moved.
 
 ## Windows audio
 
@@ -860,12 +967,45 @@ recording from the headset, the ring turns white within moments and stays
 white after the recording stops, while Windows goes on reporting 24-bit/96
 kHz throughout. Stepping the format to 48 kHz and back turns it purple
 again, with the microphone still open, and it stays purple *(confirmed by
-the owner, three times, with Discord and Teams)*. Whether the sound itself
-changes while the ring is white is not known.
+the owner, three times, with Discord and Teams)*. The format Windows sends
+does not change while it is white; whether the dock's radio link to the
+headset does is not known.
 
 Only the first recording turns it white. Joining a Discord call while
 another application already had the microphone open left the ring purple
 *(confirmed by the owner)*.
+
+**What the dock is sent when the ring turns white** *(seen on the wire, USB
+capture of the dock alone, 23 October 2026, ring colours read by the owner)*.
+Opening the headset's microphone sends the dock two requests and nothing
+else: the microphone's streaming interface set to its working setting, and
+the sampling frequency 48 kHz. The ring was white a few seconds later.
+Closing the microphone sends the interface back to its idle setting, and the
+ring stayed white.
+
+Setting the format again did not turn it purple in two tries, once with the
+microphone closed and once with it open, with nothing else playing. In both,
+the dock saw the playback stream stop, then start at the old rate for under
+40 ms and stop again, and never a playback stream at 96 kHz after the step.
+A silent stream, and the stream of an inaudible tone, sent the dock nothing
+at all, and the ring stayed white.
+
+**Starting real playback turns it purple** *(seen on the wire, a second
+capture, owner reading the ring)*. With the ring white and nothing playing,
+the owner played music. The dock was sent the playback interface set to idle
+and then to its working setting 42 ms later, then the sampling frequency
+96 kHz; five seconds later the ring was purple. That is the only playback
+start in the capture, and the only thing that changed the ring after the
+microphone turned it white. So the ring follows the last stream the dock is
+told to start: the microphone, at 48 kHz, white; playback at 96 kHz, purple.
+Setting the format again turns it purple only when something is playing,
+because that makes Windows start the playing stream again at 96 kHz, which is
+the owner's confirmed case with Discord and Teams. With nothing playing, the
+ring stays white until anything plays, and then turns purple by itself, as it
+did between two tests earlier the same day. Whether the colour follows the
+rate or only the start, and whether the dock's radio link to the headset
+changes while the ring is white, are not known. Windows keeps sending
+24-bit 96 kHz to the dock throughout *(measured)*.
 
 **The Charging Dock can go silent at 96 kHz.** Windows was mixing at
 96 kHz, playing to the dock at a healthy level, with the sound link at 2,
@@ -965,6 +1105,18 @@ finding above proves nothing either way.
 - **Hiding the Windows volume overlay** from the headset's wheel, at any
   reasonable cost.
 - **Switching Bluetooth from software.** No writable key found.
+- **Muting the boom microphone on the headset, with its tone and red ring.**
+  With the boom in, the arm is its only mute. Writing the arm's `0x600`
+  changes nothing, a write to the built-in microphones' `0x650` is undone,
+  and Swarm II's Mute Mic one-press command, AppkeyCode `0x3D`, sent twice
+  in SP2Tools' proven appkey frame, did nothing: no tone, no red ring,
+  passthrough still on *(measured, 2026-10-22)*. The headset's mute is
+  gated on the boom-detect line, GPIO 5, which reads low with the boom in
+  *(research, firmware code)*. The two gain writes its mute makes, −96 dB
+  on `0x02020200` (NVKey `0x5052`) and `0x03020400`, could be sent through
+  RACE `0x000A`, without the tone or the ring, but each is saved to the
+  headset's settings. Not tried, by the owner's choice: a mic mute is not
+  worth a stored write. So with the boom in, Neap mutes in Windows.
 
 Studying Swarm II's copies is fine; sending anything down the update path is
 not.

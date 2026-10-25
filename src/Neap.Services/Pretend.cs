@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Neap.Core;
 using Neap.Core.Presets;
 using Neap.Core.Pretend;
@@ -78,7 +79,15 @@ public static class Pretend
     /// <summary>With <see cref="MiniFlag"/>, draws the mini panel at touch size, as a small window gets it.</summary>
     public const string TouchFlag = "--touch";
 
+    /// <summary>With <see cref="Flag"/>, makes every firmware section fail its read back, so the headset's own revert can be seen.</summary>
+    public const string FirmwareRevertsFlag = "--firmware-reverts";
+
     public static bool Active { get; } = Given(Flag);
+
+    /// <summary>The pretend headset's firmware, or null outside pretend mode, where no headset's firmware is written yet.</summary>
+    public static IFirmwareWriter? Firmware { get; } = Active
+        ? new PretendFirmwareWriter(Core.Firmware.FirmwareEdit.NoiseCycle.FirmwareBuild, Given(FirmwareRevertsFlag))
+        : null;
 
     /// <summary>Whether a pretend run is shown in high contrast.</summary>
     public static bool HighContrast { get; } = Active && Given(HighContrastFlag);
@@ -238,6 +247,16 @@ public static class Pretend
         _control = new PretendControl(Headset, Windows, line => AppLog.Write(line));
         _control.Start();
         AppLog.Write($"pretend headset: answering on the pipe {PretendControl.DefaultPipe}");
+    }
+
+    /// <summary>Lets a test script move the keyboard focus, open pages and the mini panel, and press controls; see <see cref="PretendControl.MoveFocus"/>, <see cref="PretendControl.OpenPage"/>, <see cref="PretendControl.OpenMini"/> and <see cref="PretendControl.Press"/>.</summary>
+    public static void Drives(Func<FocusMove, JsonNode?> move, Func<string, bool> open, Action mini, Func<string, bool> press)
+    {
+        if (_control is null) return;
+        _control.MoveFocus = move;
+        _control.OpenPage = open;
+        _control.OpenMini = mini;
+        _control.Press = press;
     }
 
     public static void Stop() => _control?.Dispose();

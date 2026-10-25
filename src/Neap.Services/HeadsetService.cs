@@ -5,7 +5,6 @@ using System.Text.Json;
 using Neap.Core;
 using Neap.Core.Audio;
 using Neap.Core.Connection;
-using Neap.Core.Diagnostics;
 using Neap.Core.Hid;
 using Neap.Core.Protocol;
 using Neap.Core.Settings;
@@ -89,6 +88,9 @@ public sealed class HeadsetService : IDisposable
     /// </remarks>
     private const int UnansweredLimit = 3;
 
+    /// <summary>A group to read at the next watch, ahead of <see cref="Watched"/>: one a write changed without the headset saying so; see <see cref="HeadsetModel.HearingOffAfterEqualiser"/>.</summary>
+    private string? _readNext;
+
     /// <summary>Closest together two requests to the headset are sent; it drops one sent straight after another.</summary>
     private static readonly TimeSpan AskGap = TimeSpan.FromMilliseconds(300);
 
@@ -158,19 +160,47 @@ public sealed class HeadsetService : IDisposable
     public event Action<HeadsetStatus>? StatusChanged;
 
     /// <summary>
-    /// Whether the headset is there and the system will not let this user open
-    /// it, which no switching on or plugging in will change.
+    /// Whether the headset is there and needs the access rule before Neap can
+    /// use it, which no switching on or plugging in will change: the system
+    /// will not let this user open it, or see <see cref="AccessOutOfDate"/>.
     /// </summary>
     public bool AccessDenied { get; private set; }
 
-    /// <summary><see cref="AccessDenied"/> changed. Raised on the UI thread.</summary>
+    /// <summary>
+    /// Of <see cref="AccessDenied"/>, whether this user can open the headset,
+    /// and the rule installed is an older one under which its transmitter has
+    /// stopped answering; see <see cref="RuleOutOfDate"/>.
+    /// </summary>
+    public bool AccessOutOfDate { get; private set; }
+
+    /// <summary>
+    /// Whether a transmitter still gives no answer of its own after Neap
+    /// restarted it, which only plugging it in again puts right; see
+    /// <see cref="RestartSilent"/>.
+    /// </summary>
+    public bool TransmitterStopped { get; private set; }
+
+    /// <summary><see cref="AccessDenied"/>, <see cref="AccessOutOfDate"/> or <see cref="TransmitterStopped"/> changed. Raised on the UI thread.</summary>
     public event Action? AccessChanged;
 
-    private void SetAccessDenied(bool denied)
+    private void SetAccessDenied(bool denied, bool outOfDate = false)
     {
-        if (AccessDenied == denied) return;
+        if (AccessDenied == denied && AccessOutOfDate == outOfDate) return;
         AccessDenied = denied;
-        AppLog.Write(denied ? "headset: the system does not let this user open it" : "headset: the system lets this user open it");
+        AccessOutOfDate = outOfDate;
+        AppLog.Write(!denied ? "headset: the system lets this user open it"
+            : outOfDate ? "headset: the access rule needs bringing up to date before the transmitter can answer"
+            : "headset: the system does not let this user open it");
+        _ui.Post(() => AccessChanged?.Invoke());
+    }
+
+    private void SetTransmitterStopped(bool stopped)
+    {
+        if (TransmitterStopped == stopped) return;
+        TransmitterStopped = stopped;
+        AppLog.Write(stopped
+            ? "headset: the transmitter still gives no answer after its restart, so the person is asked to plug it in again"
+            : "headset: the transmitter answers again");
         _ui.Post(() => AccessChanged?.Invoke());
     }
 
@@ -229,6 +259,9 @@ public sealed class HeadsetService : IDisposable
     /// <summary>The headset connected, or last connected, or null for one Neap does not know.</summary>
     public HeadsetModel? Model { get; private set; }
 
+    /// <summary>The name the firmware of the device connected, or last connected, gives itself, or empty when it gives none.</summary>
+    public string DeviceName { get; private set; } = "";
+
     /// <summary>Whether the headset connected is one whose settings Neap only reads; see <see cref="HeadsetModel.Writable"/>.</summary>
     public bool ReadOnly => _readOnly;
 
@@ -271,6 +304,12 @@ public sealed class HeadsetService : IDisposable
         value = 0;
         return _values.TryGetValue(Hex(key), out var element) && TryRead(element, out value);
     }
+
+    /// <summary>What the headset has reported of its microphones; see <see cref="HeadsetMic"/>.</summary>
+    public HeadsetMic Microphone => new(Number(Core.Settings.Microphone.ArmSetting),
+        Number(Core.Settings.Microphone.BuiltInSetting), Number(Core.Settings.Microphone.InUseSetting));
+
+    private int? Number(string setting) => TryGetNumber(setting, out int value) ? value : null;
 
     /// <summary>The battery reading worth showing, or null when there is none; see <see cref="Core.Connection.Battery"/>.</summary>
     public BatteryReading? Battery => Core.Connection.Battery.Of(_status,
@@ -406,6 +445,7 @@ public sealed class HeadsetService : IDisposable
             }
             client.Set(OnTheWire(key), latest, HeadsetModels.CheckedAs(Model, key));
             _lastWrite[key] = Stopwatch.GetTimestamp();
+            if (Model?.HearingOffAfterEqualiser is { } hearing && HeadsetModel.IsEqualiserKey(key)) _readNext = hearing;
             return true;
         });
 
@@ -467,6 +507,22 @@ public sealed class HeadsetService : IDisposable
 
     private static async Task<T> Unwrap<T>(Task<object?> task) => (T)(await task)!;
 
+    /// <summary>Waits, up to <paramref name="wait"/>, for the work queued so far to be done.</summary>
+    /// <remarks>
+    /// For closing: the worker stops at the next turn of its loop, ahead of
+    /// anything still queued. The wait is on the job itself rather than an
+    /// await, so it can be made from the UI thread without waiting on that
+    /// thread to run a continuation.
+    /// </remarks>
+    /// <returns>Whether it was done in time. Work that failed for want of a headset counts as done.</returns>
+    public bool Flush(TimeSpan wait)
+    {
+        var done = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        try { _jobs.Add(new Job(_ => null, done)); }
+        catch (InvalidOperationException) { return true; }
+        return ((IAsyncResult)done.Task).AsyncWaitHandle.WaitOne(wait);
+    }
+
     /// <summary>A full re-read of every settings category. Around 1.2 seconds.</summary>
     public Task Refresh() => Post(client =>
     {
@@ -525,6 +581,63 @@ public sealed class HeadsetService : IDisposable
     /// <summary>1 while a loudness change is waiting to be sent.</summary>
     private int _loudnessQueued;
 
+    /// <summary>Reads the transmitter's light level on connect, on a headset that never answers for it; see <see cref="HeadsetModel.LightReadFromTransmitter"/>.</summary>
+    /// <remarks>Filed as the headset's own key for the light, so it shows where a reported level would, and is said in the log when it gives none.</remarks>
+    private void ProbeLight(HeadsetClient client)
+    {
+        if (Model?.LightReadFromTransmitter is not { } key) return;
+        int? level;
+        try { level = client.ReadTransmitterLight(TimeSpan.FromMilliseconds(500)); }
+        catch (Exception) { level = null; }
+        if (level is null)
+        {
+            AppLog.Write("headset: the transmitter gave no light level when asked");
+            return;
+        }
+        Merge(new Dictionary<string, JsonElement>
+        {
+            [Hex(key)] = JsonSerializer.SerializeToElement(level.Value.ToString(CultureInfo.InvariantCulture)),
+        }, authoritative: true);
+    }
+
+    /// <summary>Says in the log, on connect, the gain the headset stores for mic monitoring, on a headset where a level can be accepted and change nothing; see <see cref="HeadsetModel.ReadsMonitoringBack"/>.</summary>
+    /// <remarks>
+    /// Once per connect only. A RACE request in the steady loop competes with
+    /// the heartbeat, which the headset drops when asked too often.
+    /// </remarks>
+    private void ReadMonitoringBack(HeadsetClient client)
+    {
+        if (Model is not { ReadsMonitoringBack: true }) return;
+        float? stored;
+        try { stored = client.ReadSidetone(TimeSpan.FromMilliseconds(500)); }
+        catch (Exception) { stored = null; }
+        AppLog.Write(stored is float db
+            ? string.Create(CultureInfo.InvariantCulture, $"mic monitoring: at connect, the headset stores {db:0.0} dB")
+            : "mic monitoring: at connect, the headset gave no reading of the gain it stores");
+    }
+
+    /// <summary>Writes in the log, on connect, what the headset's buttons and switches have done, on a headset that keeps it; see <see cref="HeadsetModel.LogsInputs"/>.</summary>
+    /// <remarks>
+    /// Once per connect only. Read after every report, it asks the headset
+    /// several times a second, and the headset then drops the heartbeat often
+    /// enough to read as not connected.
+    /// </remarks>
+    private void LogInputs(HeadsetClient client)
+    {
+        if (Model is not { LogsInputs: true }) return;
+        InputReading? reading;
+        try { reading = client.ReadInputs(TimeSpan.FromMilliseconds(500)); }
+        catch (Exception) { reading = null; }
+        if (reading is not { } r)
+        {
+            AppLog.Write("inputs: the headset gave no reading of its buttons and switches");
+            return;
+        }
+        var said = HeadsetInputs.Describe(r.Flags);
+        AppLog.Write(string.Create(CultureInfo.InvariantCulture,
+            $"inputs: flags 0x{r.Flags:x8} ({(said.Count == 0 ? "nothing yet" : string.Join(", ", said))}); wheels {r.Wheel0}, {r.Wheel1}, {r.Wheel2}"));
+    }
+
     /// <summary>Reads the loudness level on connect and files it, hiding the feature when the headset does not answer.</summary>
     /// <remarks>Only a headset whose model has the boost is asked; any other is not sent the command at all.</remarks>
     private void ProbeLoudness(HeadsetClient client)
@@ -563,6 +676,7 @@ public sealed class HeadsetService : IDisposable
         int beats = 0;
         long nextWatch = 0, lastAsk = 0;
         int watches = 0;
+        string[] watched = Watched;
         string carrying = "";
         string product = "";
         bool elsewhere = false;
@@ -618,7 +732,8 @@ public sealed class HeadsetService : IDisposable
                     // Clear anything left on the wire before the first read,
                     // or a stale reply answers the first question asked.
                     client.Drain();
-                    var everything = client.ReadAll(categories: Categories());
+                    var silent = new List<(string Category, string? Heard)>();
+                    var everything = client.ReadAll(categories: Categories(), unanswered: silent);
 
                     // Opening the transmitter proves only that the
                     // transmitter is there. If nothing came back, the headset
@@ -636,13 +751,24 @@ public sealed class HeadsetService : IDisposable
                     }
 
                     Merge(everything, authoritative: true);
-                    foreach (string group in HeadsetCheck.Silent(everything.Keys, Categories()))
-                        AppLog.Write($"headset: no answer for its {group} settings, which have no reading until it reports them");
+                    // Each group asked and not answered, judged from the reply
+                    // itself: judged from the keys reported, a group sharing a
+                    // key range with another that answered, as the Atlas Air's
+                    // noise gate shares 0x7xx, reads as answered.
+                    foreach (var (group, heard) in silent)
+                        AppLog.Write($"headset: no answer for its {group} settings, which have no reading until it reports them"
+                            + (heard is null ? "" : $"; it sent {heard} instead"));
                     primed = true;
+                    // Only the groups this headset has: one it lacks costs a
+                    // whole window each time, unanswered.
+                    watched = [.. Watched.Intersect(Categories())];
                     unanswered = 0;
                     beats = 0;
                     nextBeat = Stopwatch.GetTimestamp() + BeatTicks;
                     ProbeLoudness(client);
+                    ProbeLight(client);
+                    ReadMonitoringBack(client);
+                    LogInputs(client);
                     var held = Carrying(client);
                     carrying = held?.Name ?? adapter;
                     product = held?.Product ?? client.ProductId.ToString("X4", CultureInfo.InvariantCulture);
@@ -652,7 +778,7 @@ public sealed class HeadsetService : IDisposable
                     // this catches is one the app can start up already in.
                     _lastLinkFlag = null;
                     LinkFlagMoved();
-                    Publish(_link.Answering(elsewhere, route, adapter, carrying, client.Device, product));
+                    Publish(_link.Answering(elsewhere, route, adapter, carrying, product));
                 }
 
                 // Queued work first: a slider write waiting behind a poll
@@ -669,7 +795,7 @@ public sealed class HeadsetService : IDisposable
                     LetGo(ref client);
                     continue;
                 }
-                Publish(_link.Cable(elsewhere, route, adapter, carrying, client.Device, product));
+                Publish(_link.Cable(elsewhere, route, adapter, carrying, product));
 
                 var events = client.ReadOnce();
                 if (events.Count > 0)
@@ -693,7 +819,10 @@ public sealed class HeadsetService : IDisposable
                 // nothing either way, so ask something cheap now and then.
                 // One missed answer is not enough — a reply can be lost
                 // behind a long read — but two in a row is.
-                if (primed && Stopwatch.GetTimestamp() >= nextBeat)
+                // Not straight after another request, which it would drop.
+                long now = Stopwatch.GetTimestamp();
+                if (primed && now >= nextBeat
+                    && now - lastAsk >= AskGap.TotalSeconds * Stopwatch.Frequency)
                 {
                     // One request per beat, alternating GSI and Inf. The
                     // headset drops requests sent back to back (see
@@ -721,7 +850,11 @@ public sealed class HeadsetService : IDisposable
                     // as gone.
                     unanswered = beat.Count > 0 ? 0 : unanswered + 1;
 
-                    if (unanswered >= 2) Gone();
+                    if (unanswered >= 2)
+                    {
+                        AppLog.Write("headset: no answer to two heartbeats in a row, so it reads as not connected");
+                        Gone();
+                    }
                     // Reading the slots costs four round trips, so it is done
                     // when 0x150 says something moved, and on a slow timer in
                     // case a change is ever missed — not every beat.
@@ -736,32 +869,35 @@ public sealed class HeadsetService : IDisposable
                         // the selection: the device answering goes on answering
                         // (measured every time), so reopening only finds it
                         // again after four seconds of "Connecting" on screen.
-                        Publish(_link.Answering(elsewhere, route, adapter, carrying, client.Device, product));
+                        Publish(_link.Answering(elsewhere, route, adapter, carrying, product));
                     }
                 }
 
                 // The values the headset may not announce, asked for in turn.
                 // Not straight after another request, which it would drop.
                 long asking = Stopwatch.GetTimestamp();
-                if (primed && client is not null && asking >= nextWatch
+                if (primed && client is not null && watched.Length > 0 && asking >= nextWatch
                     && asking - lastAsk >= AskGap.TotalSeconds * Stopwatch.Frequency)
                 {
-                    string category = Watched[watches++ % Watched.Length];
-                    var seen = client.ReadCategory(category, BeatWindow);
+                    // A group a write has changed without the headset saying so
+                    // goes first.
+                    string group = Interlocked.Exchange(ref _readNext, null) ?? watched[watches++ % watched.Length];
+                    var seen = client.ReadCategory(group, BeatWindow);
                     lastAsk = Stopwatch.GetTimestamp();
                     nextWatch = lastAsk + (long)(WatchEvery.TotalSeconds * Stopwatch.Frequency);
                     if (seen.Count > 0)
                     {
                         Merge(seen, authoritative: false);
-                        watchAnswers.Add(category);
+                        watchAnswers.Add(group);
                         unanswered = 0;
                     }
                     // Counted like a missed beat, so a switch-off shows in
-                    // a few seconds rather than two beats. Only a category
+                    // a few seconds rather than two beats. Only a group
                     // that has answered on this device counts: a headset
                     // that never answers one is not gone for it.
-                    else if (watchAnswers.Contains(category) && ++unanswered >= UnansweredLimit)
+                    else if (watchAnswers.Contains(group) && ++unanswered >= UnansweredLimit)
                     {
+                        AppLog.Write($"headset: no answer to {UnansweredLimit} questions in a row, so it reads as not connected");
                         Gone();
                     }
                 }
@@ -976,13 +1112,25 @@ public sealed class HeadsetService : IDisposable
         heard = spoke;
         _askedBefore = true;
         _askLast = null;
+        bool outOfDate = false, stopped = false;
         if (client is null && OperatingSystem.IsLinux() && _devices is SystemDevices)
-            denied |= RestartSilent(silent);
+        {
+            var (refused, old, still) = RestartSilent(silent);
+            denied |= refused;
+            outOfDate = old && !denied;
+            stopped = still && !denied;
+        }
         if (client is not null)
         {
             _toldQuiet.Clear();
+            _channelStopped = false;
             client.Wrote += attempt => Wrote?.Invoke(attempt);
             Model = HeadsetModels.Of(client.ProductId);
+            if (client.Name != DeviceName)
+                AppLog.Write(client.Name.Length > 0
+                    ? $"headset: its firmware calls it {client.Name}"
+                    : $"headset: {client.Device} gives no name, so the model's is shown");
+            DeviceName = client.Name;
             _readOnly = !client.AllowWrites;
             _refused.Clear();
             if (_readOnly)
@@ -991,26 +1139,56 @@ public sealed class HeadsetService : IDisposable
 
         // Said only when nothing could be opened: one transmitter that will
         // not open beside another that does is not the person's problem.
-        SetAccessDenied(client is null && denied);
+        SetAccessDenied(client is null && (denied || outOfDate), client is null && outOfDate);
+        SetTransmitterStopped(stopped);
         return client;
     }
 
     /// <summary>Restarts each silent transmitter that is due a restart, reading it as it comes back; see <see cref="SilentRestarts"/>.</summary>
     /// <remarks>
-    /// The next ask, a few seconds later, finds out whether it worked: a
+    /// <para>
+    /// Each is asked first whether the headset is linked to it, a question it
+    /// answers itself (<see cref="LinkInquiry"/>). One that answers no has a
+    /// working channel and no headset to speak for, and is asked again next
+    /// time rather than restarted: the restart switches the headset off.
+    /// </para>
+    /// <para>
+    /// The next ask, a few seconds later, finds out whether a restart worked: a
     /// restarted transmitter's replies last through closing and reopening it.
+    /// One restarted already that is silent again is asked the link question
+    /// once more. No answer means the restart did not bring its channel back,
+    /// as on one tester's Atlas Air under CachyOS, where only unplugging it
+    /// and plugging it in again did.
+    /// </para>
     /// </remarks>
-    /// <returns>Whether the system refused to let this user restart one.</returns>
+    /// <returns>Whether the system refused to let this user restart one, whether the access rule needs bringing up to date, and whether one still gives no answer after its restart.</returns>
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
-    private bool RestartSilent(IReadOnlyList<string> silent)
+    private (bool Refused, bool OutOfDate, bool Stopped) RestartSilent(IReadOnlyList<string> silent)
     {
         var present = _devices.Candidates();
         bool denied = false;
-        foreach (string path in _restarts.Due(silent, present.Select(device => device.Path)))
+        var due = _restarts.Due(silent, present.Select(device => device.Path));
+        foreach (string path in due)
         {
             var device = present.First(d => d.Path == path);
             try
             {
+                bool? linked = HidrawTransport.AskLinked(device, LinkWait);
+                bool stopped = SilentRestarts.ChannelStopped(linked);
+                _channelStopped |= stopped;
+                if (!SilentRestarts.Needed(linked, stopped && RuleOutOfDate()))
+                {
+                    _restarts.Retry(path);
+                    if (_toldUnlinked.Add(path))
+                        AppLog.Write(stopped
+                            ? $"headset: the transmitter at {path} gave no answer to the link question, so it is restarted once this version's access rule is in"
+                            : $"headset: the transmitter at {path} answers, and says no headset is linked to it, so it is left as it is");
+                    continue;
+                }
+                _toldUnlinked.Remove(path);
+                AppLog.Write($"headset: the transmitter at {path} "
+                    + (linked is null ? "gave no answer to the link question" : "says the headset is linked, and answers nothing else")
+                    + ", so it is restarted");
                 var heard = HidrawTransport.Restart(device, RestartListen);
                 AppLog.Write($"headset: restarted the silent transmitter at {path}, and read {heard.Count} reports with something in them as it came back"
                     + (heard.Count == 0 ? "" : $", the first {Math.Min(heard.Count, 5)}: {string.Join(" ", heard.Take(5))}"));
@@ -1027,11 +1205,65 @@ public sealed class HeadsetService : IDisposable
                 NoteFault($"restarting {path}", ex);
             }
         }
-        return denied;
+        bool still = present.Any(device => silent.Contains(device.Path) && !due.Contains(device.Path)
+            && _restarts.Restarted(device.Path) && StillStopped(device));
+        // Asked every time, not only when a restart is due, so the offer stays
+        // on screen until the person takes it or the headset answers.
+        return (denied, _channelStopped && RuleOutOfDate(), still);
+    }
+
+    /// <summary>Whether a transmitter gives no answer to the link question, which it answers itself.</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private bool StillStopped(HidDeviceInfo device)
+    {
+        try
+        {
+            return HidrawTransport.AskLinked(device, LinkWait) is null;
+        }
+        catch (TransportException ex)
+        {
+            NoteFault($"asking {device.Path} the link question", ex);
+            return false;
+        }
     }
 
     /// <summary>How long a restarted transmitter is read after it comes back: the start-up messages come within the first second or two.</summary>
     private static readonly TimeSpan RestartListen = TimeSpan.FromSeconds(2);
+
+    /// <summary>How long a transmitter is given to answer the link question, which it answers itself.</summary>
+    private static readonly TimeSpan LinkWait = TimeSpan.FromMilliseconds(700);
+
+    /// <summary>The transmitters the log has said are left as they are, for now or for good, until one is restarted or answers.</summary>
+    private readonly HashSet<string> _toldUnlinked = new(StringComparer.Ordinal);
+
+    private bool _toldRuleOutOfDate;
+
+    /// <summary>Whether a silent transmitter has given no answer to the link question since the headset last answered; see <see cref="SilentRestarts.ChannelStopped"/>.</summary>
+    private bool _channelStopped;
+
+    /// <summary>Whether the access rule installed is an older one than this version's.</summary>
+    /// <remarks>
+    /// An older rule still gives access, so nothing else would notice it; but
+    /// it lets the system put a transmitter to sleep, which can leave it
+    /// answering nothing until it is reset. So once a transmitter has stopped
+    /// answering, the person is offered the new rule the same way as a first
+    /// one; a headset that is only switched off is no reason to ask.
+    /// </remarks>
+    private bool RuleOutOfDate()
+    {
+        try
+        {
+            bool old = File.Exists(UdevRule.InstalledPath) && !UdevRule.IsCurrent(File.ReadAllText(UdevRule.InstalledPath));
+            if (old && !_toldRuleOutOfDate)
+                AppLog.Write($"headset access: {UdevRule.InstalledPath} is an older rule, which lets the system put the transmitter to sleep; offering this version's");
+            _toldRuleOutOfDate = old;
+            return old;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     private readonly SilentRestarts _restarts = new();
 

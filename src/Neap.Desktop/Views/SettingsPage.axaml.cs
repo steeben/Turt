@@ -20,6 +20,10 @@ public partial class SettingsPage : UserControl
     /// <summary>How wide Neap's card has to be for its buttons to sit beside its name rather than under it.</summary>
     private const double CardBesideWidth = 680;
 
+    /// <summary>The icon's styles, in the order the dropdown lists them.</summary>
+    private static readonly TrayIconStyle[] TrayIconStyles =
+        [TrayIconStyle.Logo, TrayIconStyle.Battery, TrayIconStyle.Percentage, TrayIconStyle.HeadsetBattery, TrayIconStyle.HeadsetPercentage];
+
     private readonly DispatcherTimer _ticking = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool _painting;
     private double _stackedGap;
@@ -39,12 +43,13 @@ public partial class SettingsPage : UserControl
 
         MiniCard.IsVisible = TrayAvailability.Exists;
         TrayIconCard.IsVisible = TrayAvailability.Exists;
-        NeapControls.AsGroup(TrayIconOptions);
         SoundDevices.IsVisible = SoundFollowsHeadset.Supported;
         LookCard.IsVisible = TrayAvailability.Exists;
+        Advanced.IsVisible = Core.Firmware.FirmwareEdit.Released;
 
         _painting = true;
         MiniPanelSwitch.IsChecked = AppSettings.Current.MiniPanel;
+        FirmwareSwitch.IsChecked = AppSettings.Current.ShowFirmwareEdits;
         PaintTrayIcon();
         SoundFollows.IsChecked = AppServices.SoundFollow.Enabled;
         (AppSettings.Current.MiniPanelLook == PanelLook.FrostyGlass ? LookFrosty : LookStandard).IsChecked = true;
@@ -76,11 +81,7 @@ public partial class SettingsPage : UserControl
             (TopLevel.GetTopLevel(this) as MainWindow)?.MiniPanelSettingChanged();
         };
 
-        TrayIconLogo.IsCheckedChanged += (_, _) => ChooseTrayIcon(TrayIconLogo, TrayIconStyle.Logo);
-        TrayIconBattery.IsCheckedChanged += (_, _) => ChooseTrayIcon(TrayIconBattery, TrayIconStyle.Battery);
-        TrayIconPercentage.IsCheckedChanged += (_, _) => ChooseTrayIcon(TrayIconPercentage, TrayIconStyle.Percentage);
-        TrayIconHeadsetBattery.IsCheckedChanged += (_, _) => ChooseTrayIcon(TrayIconHeadsetBattery, TrayIconStyle.HeadsetBattery);
-        TrayIconHeadsetPercentage.IsCheckedChanged += (_, _) => ChooseTrayIcon(TrayIconHeadsetPercentage, TrayIconStyle.HeadsetPercentage);
+        TrayIconChoice.SelectionChanged += (_, _) => ChooseTrayIcon();
         SoundFollows.IsCheckedChanged += (_, _) =>
         {
             if (_painting) return;
@@ -109,6 +110,15 @@ public partial class SettingsPage : UserControl
         ThemeSystem.IsCheckedChanged += OnThemeChosen;
         ThemeLight.IsCheckedChanged += OnThemeChosen;
         ThemeDark.IsCheckedChanged += OnThemeChosen;
+
+        FirmwareSwitch.IsCheckedChanged += (_, _) =>
+        {
+            if (_painting) return;
+            bool on = FirmwareSwitch.IsChecked == true;
+            AppSettings.Update(s => s.ShowFirmwareEdits = on);
+            AppLog.Write(on ? "firmware edits: the Firmware page is in the menu" : "firmware edits: the Firmware page is out of the menu");
+            (TopLevel.GetTopLevel(this) as MainWindow)?.FirmwareSettingChanged();
+        };
 
         CheckForUpdates.IsCheckedChanged += (_, _) =>
         {
@@ -211,18 +221,15 @@ public partial class SettingsPage : UserControl
         var settings = AppSettings.Current;
         bool painting = _painting;
         _painting = true;
-        TrayIconLogo.IsChecked = settings.TrayIcon == TrayIconStyle.Logo;
-        TrayIconBattery.IsChecked = settings.TrayIcon == TrayIconStyle.Battery;
-        TrayIconPercentage.IsChecked = settings.TrayIcon == TrayIconStyle.Percentage;
-        TrayIconHeadsetBattery.IsChecked = settings.TrayIcon == TrayIconStyle.HeadsetBattery;
-        TrayIconHeadsetPercentage.IsChecked = settings.TrayIcon == TrayIconStyle.HeadsetPercentage;
+        TrayIconChoice.SelectedIndex = Array.IndexOf(TrayIconStyles, settings.TrayIcon);
         _painting = painting;
     }
 
     /// <summary>Keeps the person's choice of what the icon shows, and draws the icon again.</summary>
-    private void ChooseTrayIcon(RadioButton option, TrayIconStyle style)
+    private void ChooseTrayIcon()
     {
-        if (_painting || option.IsChecked != true) return;
+        if (_painting || TrayIconChoice.SelectedIndex < 0) return;
+        var style = TrayIconStyles[TrayIconChoice.SelectedIndex];
         AppSettings.Update(s => s.TrayIcon = style);
         AppLog.Write($"notification area: the icon shows {style}");
         PaintTrayIcon();

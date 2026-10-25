@@ -101,11 +101,11 @@ public partial class QuickControls : UserControl
 
         HeadsetName.Text = HeadsetTitle.Current();
 
-        var look = StatusLook.Of(status, AppServices.AudioRoute.SoundElsewhere(status));
+        bool elsewhere = AppServices.AudioRoute.SoundElsewhere(status);
+        var look = StatusLook.Of(status, elsewhere, headset.AccessDenied);
         Tones.Apply(StateDot, look.Tone);
         bool cable = AppServices.AudioRoute.OverCable(status);
-        HowConnected.Text = Connection(status, cable, look.Headline);
-        ToolTip.SetTip(HowConnected, status.Detail);
+        HowConnected.Text = Connection(status, cable, elsewhere, look.Headline);
 
         if (headset.Battery is { } battery)
         {
@@ -133,7 +133,7 @@ public partial class QuickControls : UserControl
         }
         _signal.Panel.IsVisible = showSignal;
 
-        PaintNote(StateNote.For(status));
+        PaintNote(StateNote.For(status, _plugged is { Looked: true } plugged ? plugged.Products : null, headset.ReadOnly, headset.TransmitterStopped));
         Fold(MixCard, SectionFold.For(status, whenOff: true, headset.AccessDenied));
         Fold(SettingsCard, SectionFold.For(status, whenOff: false, headset.AccessDenied));
     }
@@ -145,8 +145,8 @@ public partial class QuickControls : UserControl
             part.IsVisible = fold == Core.Connection.Fold.Open;
     }
 
-    private string Connection(HeadsetStatus status, bool cable, Headline headline) =>
-        ConnectionLine.Of(status, cable, _plugged is { Looked: true } p ? p.Products : null) switch
+    private string Connection(HeadsetStatus status, bool cable, bool elsewhere, Headline headline) =>
+        ConnectionLine.Of(status, cable, _plugged is { Looked: true } p ? p.Products : null, elsewhere) switch
         {
             ConnectionShown.Cable => Strings.Get("Home_ThroughCable"),
             ConnectionShown.NoTransmitter => Strings.Get("Home_ThroughNoSound"),
@@ -186,6 +186,9 @@ public partial class QuickControls : UserControl
     {
         bool beside = Header.Bounds.Width >= ReadingsBeside;
         Grid.SetRow(Readings, beside ? 0 : 1);
+        // The empty second row would still take the gap and push the name and
+        // readings above the card's middle.
+        Header.RowSpacing = beside ? 0 : Space.M;
         Grid.SetColumn(Readings, beside ? 1 : 0);
         Grid.SetColumnSpan(Readings, beside ? 1 : 2);
         Readings.HorizontalAlignment = beside ? Avalonia.Layout.HorizontalAlignment.Right : Avalonia.Layout.HorizontalAlignment.Left;
@@ -255,6 +258,9 @@ public partial class QuickControls : UserControl
             // No fallback: a cable has no out of range, and nothing to press.
             Note.OffOnCable => (StateCopy.WhatOffOnCable, "", StateCopy.FixOff, ""),
             Note.Off => (StateCopy.WhatOff, "", StateCopy.FixOff, StateCopy.FallbackOff),
+            Note.Stopped => (StateCopy.WhatStopped, "", StateCopy.FixStopped, ""),
+            // Nothing to do: it is how Neap works with this headset for now.
+            Note.ReadOnly => (StateCopy.WhatReadOnly, "", "", ""),
             _ => null,
         };
 
@@ -265,6 +271,7 @@ public partial class QuickControls : UserControl
         NoteMix.Text = n.Mix;
         NoteMix.IsVisible = n.Mix.Length > 0;
         NoteFix.Text = n.Fix;
+        NoteFix.IsVisible = n.Fix.Length > 0;
         NoteFallback.Text = n.Fallback;
         NoteFallback.IsVisible = n.Fallback.Length > 0;
     }

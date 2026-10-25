@@ -6,67 +6,35 @@
     xmlns:loc="using:Neap.Desktop.Localization">
 
     <!--
-        The dial on the left and the card's own column beside it: its name, the
-        chat apps and the way to the keys. Arrange stacks them in a narrow card.
+        The dial on the left and the card's own column beside it: its name,
+        each side's level and meter, and the chat apps. Arrange stacks them in
+        a narrow card.
     -->
     <Grid x:Name="Layout" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
 
         <!--
-            The knob, with how loud each side plays on its cap. Disabled until
-            chat apps are chosen, so the card shows what it is for before the
-            question below is answered.
+            The knob, drawn smaller than its own size so the card is as tall as
+            the column beside it, with the way the mix leans on its cap.
+            Disabled until chat apps are chosen, so the card shows what it is
+            for before the question beside it is answered.
         -->
-        <Grid
+        <Viewbox
             x:Name="DialArea"
-            Margin="0,0,0,14"
+            Width="{StaticResource NeapDialShown}"
+            Height="{StaticResource NeapDialShown}"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
             Classes="mixdial">
-            <c:GameChatDial x:Name="Dial" loc:Uid.Value="Mix_Dial" />
-            <StackPanel
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                IsHitTestVisible="False"
-                Spacing="{StaticResource NeapSpaceHairline}">
+            <Grid>
+                <c:GameChatDial x:Name="Dial" loc:Uid.Value="Mix_Dial" />
                 <TextBlock
                     x:Name="LeanText"
                     HorizontalAlignment="Center"
-                    Classes="label" />
-                <StackPanel
-                    HorizontalAlignment="Center"
-                    Orientation="Horizontal"
-                    Spacing="{StaticResource NeapSpaceM}">
-                    <TextBlock
-                        x:Name="GameLevel"
-                        MinWidth="56"
-                        Classes="reading"
-                        Foreground="{DynamicResource NeapGameTextBrush}"
-                        TextAlignment="Right" />
-                    <TextBlock
-                        x:Name="ChatLevel"
-                        MinWidth="56"
-                        Classes="reading"
-                        Foreground="{DynamicResource NeapChatTextBrush}"
-                        TextAlignment="Left" />
-                </StackPanel>
-            </StackPanel>
-
-            <!-- Under each end of the ring: which side is which. -->
-            <TextBlock
-                loc:Uid.Value="Mix_Game"
-                Margin="28,0,0,-14"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Bottom"
-                Classes="label"
-                Foreground="{DynamicResource NeapGameTextBrush}" />
-            <TextBlock
-                loc:Uid.Value="Mix_Chat"
-                Margin="0,0,28,-14"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Bottom"
-                Classes="label"
-                Foreground="{DynamicResource NeapChatTextBrush}" />
-        </Grid>
+                    VerticalAlignment="Center"
+                    FontWeight="SemiBold"
+                    IsHitTestVisible="False" />
+            </Grid>
+        </Viewbox>
 
         <StackPanel
             x:Name="Side"
@@ -107,57 +75,97 @@
             <c:Notice x:Name="ElsewhereBar" loc:Uid.Value="Mix_ElsewhereBar" Severity="Warning" />
 
             <!--
-                Nothing chosen yet: the question the disabled dial is waiting on.
+                Nothing chosen yet, the question the disabled dial is waiting
+                on; once an app is chosen, the levels in its place. The two
+                share one cell, so the card keeps its height and the field
+                below never moves under the pointer as the first app is ticked.
             -->
-            <TextBlock
-                x:Name="SetupLine"
-                loc:Uid.Value="Mix_Setup"
-                Classes="secondary"
-                IsVisible="False" />
+            <Grid>
+                <TextBlock
+                    x:Name="SetupLine"
+                    loc:Uid.Value="Mix_Setup"
+                    VerticalAlignment="Center"
+                    Classes="secondary"
+                    IsVisible="False" />
+
+                <!--
+                    Each side's name, what it is playing just now and how loud the
+                    mix lets it play. The number is the setting; the bars are the
+                    sound, decoration that a screen reader skips.
+                -->
+                <Grid
+                    x:Name="Levels"
+                    ColumnDefinitions="Auto,*,Auto"
+                    RowDefinitions="Auto,Auto"
+                    ColumnSpacing="{StaticResource NeapSpaceM}"
+                    RowSpacing="{StaticResource NeapSpaceS}">
+                    <TextBlock loc:Uid.Value="Mix_Game" Foreground="{DynamicResource NeapGameTextBrush}" />
+                    <c:LevelBars x:Name="GameBars" Grid.Column="1" Count="{StaticResource NeapMixBars}" VerticalAlignment="Center" />
+                    <TextBlock
+                        x:Name="GameLevel"
+                        Grid.Column="2"
+                        MinWidth="32"
+                        FontFeatures="tnum"
+                        FontWeight="SemiBold"
+                        Foreground="{DynamicResource NeapGameTextBrush}"
+                        TextAlignment="Right" />
+                    <TextBlock Grid.Row="1" loc:Uid.Value="Mix_Chat" Foreground="{DynamicResource NeapChatTextBrush}" />
+                    <c:LevelBars x:Name="ChatBars" Grid.Row="1" Grid.Column="1" Count="{StaticResource NeapMixBars}" VerticalAlignment="Center" Classes="chat" />
+                    <TextBlock
+                        x:Name="ChatLevel"
+                        Grid.Row="1"
+                        Grid.Column="2"
+                        MinWidth="32"
+                        FontFeatures="tnum"
+                        FontWeight="SemiBold"
+                        Foreground="{DynamicResource NeapChatTextBrush}"
+                        TextAlignment="Right" />
+                </Grid>
+            </Grid>
 
             <!--
                 Which applications carry chat: the only thing the mix needs to
-                know. Folded to a line naming them once chosen, and open until
-                then, because the choice is the question the panel is asking.
+                know. A field naming the chosen apps; the list opens in a flyout
+                over the page, so choosing never changes the card's height.
             -->
-            <Border Classes="inset">
-                <Expander
-                    x:Name="ChatFrom"
-                    CornerRadius="{StaticResource NeapRadiusInset}"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Stretch">
-                    <Expander.Resources>
-                        <SolidColorBrush x:Key="ExpanderHeaderBackground" Color="Transparent" />
-                        <SolidColorBrush x:Key="ExpanderHeaderBackgroundPointerOver" Color="Transparent" />
-                        <SolidColorBrush x:Key="ExpanderHeaderBackgroundPressed" Color="Transparent" />
-                    </Expander.Resources>
-                    <Expander.Header>
-                        <StackPanel Margin="0,8" Spacing="{StaticResource NeapSpaceHairline}">
-                            <TextBlock loc:Uid.Value="Mix_ChatFrom" Classes="caption secondary" />
-                            <TextBlock x:Name="ChosenText" TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                    </Expander.Header>
-                    <StackPanel Spacing="{StaticResource NeapSpaceS}">
-                        <StackPanel x:Name="AppList" Spacing="{StaticResource NeapSpaceXS}" />
-                        <!--
-                            Only applications with sound open on the headset are
-                            listed, so one not yet started is missing. The notice
-                            below says so instead when nothing is listed at all.
-                        -->
-                        <TextBlock
-                            x:Name="MissingHint"
-                            loc:Uid.Value="Mix_MissingHint"
-                            Classes="caption secondary" />
-                        <c:Notice x:Name="Nothing" loc:Uid.Value="Mix_NothingPlaying" />
-                        <Button x:Name="Refresh" loc:Uid.Value="Mix_Refresh">
-                            <StackPanel Orientation="Horizontal" Spacing="{StaticResource NeapSpaceS}">
-                                <PathIcon Width="{StaticResource NeapIconRow}" Height="{StaticResource NeapIconRow}" Data="{StaticResource IconRefresh}" />
-                                <TextBlock loc:Uid.Value="Mix_RefreshText" />
-                            </StackPanel>
-                        </Button>
+            <Button x:Name="ChatFromButton" Classes="chooser">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="{StaticResource NeapSpaceS}">
+                    <StackPanel VerticalAlignment="Center" Spacing="{StaticResource NeapSpaceHairline}">
+                        <TextBlock loc:Uid.Value="Mix_ChatFrom" Classes="caption secondary" />
+                        <TextBlock x:Name="ChosenText" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
-                </Expander>
-            </Border>
+                    <PathIcon
+                        Grid.Column="1"
+                        Width="{StaticResource NeapIconRow}"
+                        Height="{StaticResource NeapIconRow}"
+                        VerticalAlignment="Center"
+                        Foreground="{DynamicResource NeapTextSecondaryBrush}"
+                        Data="{StaticResource IconChevronDown}" />
+                </Grid>
+                <Button.Flyout>
+                    <Flyout Placement="Bottom">
+                        <StackPanel MinWidth="260" MaxWidth="360" Spacing="{StaticResource NeapSpaceS}">
+                            <StackPanel x:Name="AppList" Spacing="{StaticResource NeapSpaceXS}" />
+                            <!--
+                                Only applications with sound open on the headset are
+                                listed, so one not yet started is missing. The notice
+                                below says so instead when nothing is listed at all.
+                            -->
+                            <TextBlock
+                                x:Name="MissingHint"
+                                loc:Uid.Value="Mix_MissingHint"
+                                Classes="caption secondary" />
+                            <c:Notice x:Name="Nothing" loc:Uid.Value="Mix_NothingPlaying" />
+                            <Button x:Name="Refresh" loc:Uid.Value="Mix_Refresh" HorizontalAlignment="Left">
+                                <StackPanel Orientation="Horizontal" Spacing="{StaticResource NeapSpaceS}">
+                                    <PathIcon Width="{StaticResource NeapIconRow}" Height="{StaticResource NeapIconRow}" Data="{StaticResource IconRefresh}" />
+                                    <TextBlock loc:Uid.Value="Mix_RefreshText" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
         </StackPanel>
     </Grid>
 </UserControl>

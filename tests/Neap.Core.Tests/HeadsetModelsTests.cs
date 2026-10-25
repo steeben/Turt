@@ -10,8 +10,6 @@ public class HeadsetModelsTests
     [Theory]
     [InlineData("229B", "Stealth Pro II")]
     [InlineData("2289", "Stealth Pro II")]
-    [InlineData("225E", "Atlas Air")]
-    [InlineData("2260", "Atlas Air")]
     public void HardwareIsKnownAsItsHeadset(string product, string name) =>
         Assert.Equal(name, HeadsetModels.Of(product)?.Name);
 
@@ -27,8 +25,13 @@ public class HeadsetModelsTests
     }
 
     [Fact]
-    public void TheAtlasAirsTransmitterIsATransmitter() =>
-        Assert.Equal(Transmitters.Piece.Transmitter, Transmitters.PieceOf("225E"));
+    public void TheAtlasAirIsKnownOnlyWhileItIsReleased()
+    {
+        Assert.Equal(HeadsetModels.AtlasAirReleased, HeadsetModels.Of("225E") is not null);
+        Assert.Equal(HeadsetModels.AtlasAirReleased, HeadsetModels.Of("2260") is not null);
+        Assert.Equal(HeadsetModels.AtlasAirReleased, Transmitters.PieceOf("225E") == Transmitters.Piece.Transmitter);
+        Assert.Equal(HeadsetModels.AtlasAirReleased, HeadsetModels.SoundMatches("Speakers (Atlas Air)"));
+    }
 
     [Fact]
     public void NoProductIdBelongsToTwoHeadsets() =>
@@ -50,8 +53,9 @@ public class HeadsetModelsTests
     [Fact]
     public void WhatItHasButNeapCannotReadIsOfferedUnread()
     {
-        Assert.True(HeadsetModels.Unread(HeadsetModels.AtlasAir, "superhuman_hearing"));
         Assert.True(HeadsetModels.Unread(HeadsetModels.AtlasAir, "noise_gate_threshold"));
+        Assert.False(HeadsetModels.Unread(HeadsetModels.AtlasAir, "superhuman_hearing"));
+        Assert.False(HeadsetModels.Unread(HeadsetModels.AtlasAir, "voice_prompt_volume"));
         Assert.False(HeadsetModels.Unread(HeadsetModels.AtlasAir, "eq_band_1"));
         Assert.False(HeadsetModels.Unread(HeadsetModels.StealthProII, "superhuman_hearing"));
         Assert.False(HeadsetModels.Unread(null, "superhuman_hearing"));
@@ -88,7 +92,7 @@ public class HeadsetModelsTests
     [InlineData("Stealth Pro II", 0x2A0)]
     [InlineData("Atlas Air", 0x260)]
     public void EachHeadsetKeepsItsCopyOfTheSystemVolumeUnderItsOwnKey(string name, int key) =>
-        Assert.Equal(key, HeadsetModels.VolumeKeyOf(HeadsetModels.All.Single(model => model.Name == name)));
+        Assert.Equal(key, HeadsetModels.VolumeKeyOf(new[] { HeadsetModels.StealthProII, HeadsetModels.AtlasAir }.Single(model => model.Name == name)));
 
     [Fact]
     public void BeforeAHeadsetIsKnownItsVolumeIsTheStealthProIIs() =>
@@ -100,8 +104,6 @@ public class HeadsetModelsTests
 
     [Theory]
     [InlineData("Speakers (Stealth Pro II Xbox Headset)", true)]
-    [InlineData("Speakers (Atlas Air)", true)]
-    [InlineData("Microphone (Atlas Air)", true)]
     [InlineData("Speakers (Realtek(R) Audio)", false)]
     [InlineData("Headset Chat (Turtle Beach) (Virtual Audio Device)", false)]
     public void EveryKnownHeadsetsSoundIsFoundByName(string name, bool headset) =>
@@ -176,6 +178,52 @@ public class HeadsetModelsTests
     public void OnlyTheStealthProIIHasTheLoudnessBoost() =>
         Assert.Equal(["Stealth Pro II"], HeadsetModels.All.Where(m => m.HasLoudnessBoost).Select(m => m.Name));
 
+    [Fact]
+    public void OnlyTheAtlasAirTurnsHearingOffWithTheEqualiser()
+    {
+        Assert.Equal("SHH", HeadsetModels.AtlasAir.HearingOffAfterEqualiser);
+        Assert.Null(HeadsetModels.StealthProII.HearingOffAfterEqualiser);
+    }
+
+    [Theory]
+    [InlineData(0x1210, true)]
+    [InlineData(0x12B0, true)]
+    [InlineData(0x13C0, true)]
+    [InlineData(0x14C0, true)]
+    [InlineData(0x800, false)]
+    [InlineData(0x1600, false)]
+    public void TheEqualisersKeysAreTheirPresetsBandsAndSaving(int key, bool equaliser) =>
+        Assert.Equal(equaliser, HeadsetModel.IsEqualiserKey(key));
+
+    [Fact]
+    public void TheAtlasAirIsNotAskedForGroupsItsFirmwareDoesNotServe()
+    {
+        var atlas = HeadsetModels.CategoriesOf(HeadsetModels.AtlasAir).ToList();
+        Assert.DoesNotContain("SAF", atlas);
+        Assert.DoesNotContain("3DT", atlas);
+        Assert.Contains("NG", atlas);
+        Assert.Contains("Mic", atlas);
+
+        var stealth = HeadsetModels.CategoriesOf(HeadsetModels.StealthProII).ToList();
+        Assert.Contains("SAF", stealth);
+        Assert.Contains("3DT", stealth);
+        Assert.Equal(Verbs.SettingCategories, HeadsetModels.CategoriesOf(null));
+    }
+
+    [Fact]
+    public void OnlyTheAtlasAirsMonitoringIsReadBack()
+    {
+        Assert.True(HeadsetModels.AtlasAir.ReadsMonitoringBack);
+        Assert.False(HeadsetModels.StealthProII.ReadsMonitoringBack);
+    }
+
+    [Fact]
+    public void OnlyTheAtlasAirsLightIsReadFromItsTransmitter()
+    {
+        Assert.Equal(0x430, HeadsetModels.AtlasAir.LightReadFromTransmitter);
+        Assert.Null(HeadsetModels.StealthProII.LightReadFromTransmitter);
+    }
+
     public static IEnumerable<object[]> ModelNames =>
         HeadsetModels.All.Select(model => new object[] { model.Name });
 
@@ -226,19 +274,18 @@ public class HeadsetModelsTests
     }
 
     [Theory]
-    [InlineData("My Headset", "Atlas Air")]
-    [InlineData(null, "Atlas Air")]
-    public void TheAtlasAirIsAlwaysCalledByItsModel(string? given, string shown) =>
-        Assert.Equal(shown, HeadsetModels.Label(HeadsetModels.AtlasAir, given));
-
-    [Theory]
-    [InlineData("Desk", "Desk")]
+    [InlineData(" Stealth Pro II Xbox ", "Stealth Pro II Xbox")]
+    [InlineData("", "Stealth Pro II")]
     [InlineData("  ", "Stealth Pro II")]
     [InlineData(null, "Stealth Pro II")]
-    public void TheStealthProIIIsCalledByItsGivenNameOrElseItsModel(string? given, string shown) =>
-        Assert.Equal(shown, HeadsetModels.Label(HeadsetModels.StealthProII, given));
+    public void AHeadsetIsCalledWhatItsFirmwareSaysOrElseItsModel(string? firmware, string shown) =>
+        Assert.Equal(shown, HeadsetModels.Label(HeadsetModels.StealthProII, firmware));
+
+    [Fact]
+    public void AnUnknownHeadsetIsCalledWhatItsFirmwareSays() =>
+        Assert.Equal("Some Headset", HeadsetModels.Label(null, "Some Headset"));
 
     [Fact]
     public void AnUnknownHeadsetWithNoNameHasNoLabel() =>
-        Assert.Null(HeadsetModels.Label(null, null));
+        Assert.Null(HeadsetModels.Label(null, ""));
 }

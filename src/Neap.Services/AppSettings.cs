@@ -82,6 +82,17 @@ public sealed class AppSettings
     /// <remarks>Read with <see cref="ModeCyclesNoise"/>; see <see cref="Core.Settings.ModeButton.CycleOf"/>.</remarks>
     [JsonPropertyName("mode_cycle_skips_off")] public bool ModeCycleSkipsOff { get; set; }
 
+    /// <summary>Whether the headset's firmware is edited to step the Mode button through off, transparency and cancelling itself.</summary>
+    /// <remarks>
+    /// Off by default: stock firmware is what every headset ships with, and
+    /// nothing the headset reports tells the two apart.
+    /// </remarks>
+    [JsonPropertyName("headset_cycles_noise")] public bool HeadsetCyclesNoise { get; set; }
+
+    /// <summary>Whether the Firmware page, for installing and removing firmware edits, is in the menu.</summary>
+    /// <remarks>Off by default: a firmware edit can stop a headset starting, so nothing about them shows until asked for.</remarks>
+    [JsonPropertyName("show_firmware_edits")] public bool ShowFirmwareEdits { get; set; }
+
     /// <summary>Whether the Charging Dock's status ring is turned purple again after the microphone opens.</summary>
     /// <remarks>
     /// On by default: without it the ring shows white through every call.
@@ -118,6 +129,10 @@ public sealed class AppSettings
 
     /// <summary>The microphone that was the default before the headset's, likewise.</summary>
     [JsonPropertyName("microphone_before_headset")] public string MicrophoneBeforeHeadset { get; set; } = "";
+
+    /// <summary>The mic monitoring level before the person last muted from the app, to put back on unmuting, or null if none is kept.</summary>
+    /// <remarks>Kept across restarts, so a mute left on when Neap closed is still undone; see <see cref="Core.Settings.MonitoringWhileMuted"/>.</remarks>
+    [JsonPropertyName("monitoring_before_mute")] public int? MonitoringBeforeMute { get; set; }
 
     /// <summary>Whether a click on the tray icon opens the mini panel rather than the window.</summary>
     /// <remarks>
