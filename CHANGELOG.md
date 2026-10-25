@@ -9,10 +9,25 @@ Each change a person could notice gets a line under **Unreleased**, in the
 section it belongs to. At a release, Unreleased takes the version number
 and date.
 
-## Unreleased
+## 0.3.1 — 2026-10-25
 
 Brings in Neap 0.3.0. Turt's mini panel stays as it was, with its dial,
 rows and frosted glass.
+
+### Highlights
+
+- **Neap 0.3.0's redesign.** Home, Audio and a new Equaliser page, with a
+  flatter, calmer look.
+- **Louder than the headset's maximum.** A loudness boost on the Audio page
+  raises the Stealth Pro II's own level, for when it is too quiet even at
+  full volume.
+- **An equaliser to try things on.** Drag the points or use the keyboard,
+  hold Compare to hear it flat, and undo any change.
+- **Profiles for calls.** A call app such as Teams or Discord can switch to
+  its profile only while it is using the microphone.
+- **The headset's own name,** the one your PC and phone show.
+- **The microphone follows every mute,** and the chat wheel no longer gets
+  stuck at the middle.
 
 ### Added
 
