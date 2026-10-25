@@ -22,9 +22,10 @@ namespace Neap.Desktop.Controls;
 /// beneath the dial to a line naming them.
 /// </para>
 /// <para>
-/// The middle of the dial shows how loud each side plays, not a share: a
-/// balanced mix plays both at full level. <see cref="MixLevels"/> decides
-/// both numbers and the word above them.
+/// Beside the dial, each side shows how loud the mix lets it play, not a
+/// share: a balanced mix plays both at full level. <see cref="MixLevels"/>
+/// decides both numbers and the word on the dial's cap. Each side's meter
+/// shows what it is playing just now.
 /// </para>
 /// <para>
 /// It stands on its own, needing nothing from the page around it, and can say
@@ -46,7 +47,7 @@ public partial class MixPanel : UserControl
 
     private bool _painting;
 
-    /// <summary>How often the level arcs are read: often enough to follow speech, as the microphone meter does.</summary>
+    /// <summary>How often the meters are read: often enough to follow speech, as the microphone meter does.</summary>
     private static readonly TimeSpan LevelReading = TimeSpan.FromMilliseconds(40);
 
     private ISideMeter? _levels;
@@ -90,8 +91,9 @@ public partial class MixPanel : UserControl
 
     /// <summary>
     /// Gets or sets whether the mix itself says the chat wheel is not reaching
-    /// the app. False where a note beside it already says so, so one problem
-    /// is not explained twice.
+    /// the app while a transmitter is lost. False where a note beside it
+    /// already says so, so one problem is not explained twice. The cable is
+    /// always said here, as no note beside it covers that.
     /// </summary>
     public bool ExplainsWheel
     {
@@ -107,8 +109,6 @@ public partial class MixPanel : UserControl
         // The wheel's notice names the keys once they are on.
         AppServices.Hotkeys.Changed += Paint;
         WindowPresence.Changed += WatchLevels;
-        // After the expander has its template: set before it, it can come up folded.
-        Platform.Post(() => ChatFrom.IsExpanded = AppServices.Mix.ChatApps.Count == 0);
         Paint();
         _ = LoadCandidates();
     }
@@ -177,17 +177,31 @@ public partial class MixPanel : UserControl
     }
 
     /// <summary>
-    /// Reads the levels only while the dial is on screen, the window is in
+    /// Reads the levels only while the meters are on screen, the window is in
     /// front and animation is on. Animation off in the system means nothing
-    /// moves by itself, and the arcs are decoration.
+    /// moves by itself, and the meters are decoration, so they are not shown;
+    /// nor where the system has no meter on each application.
     /// </summary>
     private void WatchLevels()
     {
-        bool wanted = IsLoaded && DialArea.IsEnabled && WindowPresence.InFront && AppServices.Mix.Running && Motion.Enabled;
+        bool wanted = this.InWindow() && DialArea.IsEnabled && WindowPresence.InFront && AppServices.Mix.Running && Motion.Enabled;
         if (!wanted) { StopLevels(); return; }
         if (_levelTimer is not null) return;
         _levels ??= AppServices.Mix.OpenLevels();
+        ShowMeters(_levels is not null);
         if (_levels is not null) _levelTimer = Platform.Current.Ui.Every(LevelReading, ReadLevels);
+    }
+
+    private void ShowMeters(bool shown)
+    {
+        GameBars.IsVisible = shown;
+        ChatBars.IsVisible = shown;
+    }
+
+    private void PaintMeters(SideLevel level)
+    {
+        GameBars.Paint(SideLevels.Lit(level.Game, GameBars.Count));
+        ChatBars.Paint(SideLevels.Lit(level.Chat, ChatBars.Count));
     }
 
     private void StopLevels()
@@ -195,7 +209,8 @@ public partial class MixPanel : UserControl
         _levelTimer?.Dispose();
         _levelTimer = null;
         _levelShown = default;
-        Dial.ShowLevels(0, 0);
+        PaintMeters(default);
+        if (!Motion.Enabled) ShowMeters(false);
         if (_levels is not { } meter) return;
         _levels = null;
         _ = Task.Run(meter.Dispose);
@@ -210,11 +225,11 @@ public partial class MixPanel : UserControl
             var heard = await Task.Run(meter.Read);
             if (_levelTimer is null) return;
             _levelShown = SideLevels.Next(_levelShown, heard);
-            Dial.ShowLevels(_levelShown.Game, _levelShown.Chat);
+            PaintMeters(_levelShown);
         }
         catch (Exception ex)
         {
-            AppLog.Write($"mix: the level arcs could not be read: {ex.Message}");
+            AppLog.Write($"mix: the meters could not be read: {ex.Message}");
             StopLevels();
         }
         finally { _levelReading = false; }
@@ -225,20 +240,27 @@ public partial class MixPanel : UserControl
         var apps = AppServices.Mix.ChatApps;
         bool chosen = apps.Count > 0;
         SetupLine.IsVisible = !chosen;
+        // Kept in the layout while nothing is chosen, so the card's height
+        // does not change with the first app; unseen, unread and switched off
+        // until then.
+        Levels.Opacity = chosen ? 1 : 0;
+        Levels.IsEnabled = chosen;
+        AutomationProperties.SetAccessibilityView(Levels, chosen ? AccessibilityView.Content : AccessibilityView.Raw);
         DialArea.IsEnabled = chosen;
         WatchLevels();
 
         ChosenText.Text = chosen
             ? Strings.List(apps.Select(a => _names.GetValueOrDefault(a, a)).ToList())
             : Strings.Get("Mix_NoneChosen");
-        AutomationProperties.SetName(ChatFrom, Strings.Format("Mix_ChatFromName", ChosenText.Text));
+        AutomationProperties.SetName(ChatFromButton, Strings.Format("Mix_ChatFromName", ChosenText.Text));
 
         var status = AppServices.Headset.Status;
 
         // The wheel arrives over the very link that is missing, so the app
         // cannot fix this itself; it says what still moves the mix.
-        WheelBar.IsOpen = ExplainsWheel && chosen && (status.SettingsUnreachable || status.NoSound)
+        WheelBar.IsOpen = chosen && (status.WheelOffOnCable || (ExplainsWheel && status.WheelUnreachable))
             && HeadsetModels.Shows(AppServices.Headset.Model, Feature.ChatWheel);
+        WheelBar.Title = Strings.Get(status.WheelOffOnCable ? "Mix_WheelOnCable" : "Mix_WheelBar.Title");
         WheelBar.Message = StateCopy.MixWithoutWheel();
 
         // The chat application is playing to another device. It keeps its own

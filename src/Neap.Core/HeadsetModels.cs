@@ -56,15 +56,42 @@ public sealed record HeadsetModel(
     /// <summary>The groups of settings it has besides those every headset is asked for.</summary>
     public IReadOnlyList<string> ExtraCategories { get; init; } = [];
 
+    /// <summary>The groups every headset is asked for that it does not have.</summary>
+    /// <remarks>A group it does not have is never answered, so asking for one only delays the read at start.</remarks>
+    public IReadOnlyList<string> MissingCategories { get; init; } = [];
+
     /// <summary>Whether it has the loudness boost; see <see cref="Audio.LoudnessBoost"/>.</summary>
     /// <remarks>
-    /// The boost writes a level the headset keeps, by a command confirmed only on
-    /// the Stealth Pro II, so no other headset is sent it, even to ask.
+    /// The boost writes a level the headset keeps, so a headset is sent it,
+    /// even to ask, only where the command is known: confirmed on the Stealth
+    /// Pro II, and read from the Atlas Air's firmware (SP2Tools F114: the same
+    /// command, parameter and stock level), for its testers to confirm by ear.
     /// </remarks>
     public bool HasLoudnessBoost { get; init; }
 
-    /// <summary>Whether the name its owner gave it is shown above its status, rather than <see cref="Name"/>.</summary>
-    public bool ShowsGivenName { get; init; } = true;
+    /// <summary>Whether its mic monitoring is turned down while the app has the microphone muted; see <see cref="Settings.MonitoringWhileMuted"/>.</summary>
+    public bool QuietsMonitoringWhileMuted { get; init; }
+
+    /// <summary>The group its Superhuman Hearing is in, where a change to the equaliser turns Superhuman Hearing off without saying so, or null.</summary>
+    /// <remarks>The Atlas Air does this (SP2Tools F122), so the group is read again after every equaliser write.</remarks>
+    public string? HearingOffAfterEqualiser { get; init; }
+
+    /// <summary>The key on the headset its transmitter's light level is kept at, where only the transmitter gives a reading, or null; see <see cref="Hid.TransmitterLight"/>.</summary>
+    public int? LightReadFromTransmitter { get; init; }
+
+    /// <summary>Whether the gain it stores for mic monitoring is read back into the log at connect and after each change; see <see cref="Audio.Sidetone"/>.</summary>
+    /// <remarks>On the Atlas Air a monitoring level can be accepted and still change nothing (SP2Tools F120), which only the stored gain shows.</remarks>
+    public bool ReadsMonitoringBack { get; init; }
+
+    /// <summary>Whether what its buttons and switches have done is read into the log at connect and after each change it reports; see <see cref="Hid.HeadsetInputs"/>.</summary>
+    /// <remarks>
+    /// On the Atlas Air no key says where the boom is or which button a
+    /// setting belongs to (SP2Tools F120, F126); a tester's log shows both.
+    /// </remarks>
+    public bool LogsInputs { get; init; }
+
+    /// <summary>Whether a key is one of the equalisers', game, microphone or Bluetooth: presets, bands and saving.</summary>
+    public static bool IsEqualiserKey(int key) => key is >= 0x1200 and < 0x1500;
 }
 
 /// <summary>The headsets Neap knows.</summary>
@@ -168,7 +195,11 @@ public static class HeadsetModels
             Feature.AutoShutOff, Feature.SuperhumanHearing, Feature.NoiseGate,
             Feature.VoicePrompts, Feature.Lights,
         },
-        new HashSet<Feature> { Feature.SuperhumanHearing, Feature.NoiseGate, Feature.VoicePrompts, Feature.Lights },
+        // Reported by the headset, seen in testers' recordings: Superhuman
+        // Hearing and voice prompts. Not yet seen in a read: the noise gate,
+        // which the firmware serves as group NG (SP2Tools F125), and the light,
+        // which 0.2.1.7 reads from the transmitter.
+        new HashSet<Feature> { Feature.NoiseGate, Feature.Lights },
         [FixedControl.VolumeWheel, FixedControl.FlipToMute, FixedControl.QuickSwitch, FixedControl.BluetoothCallButton])
     {
         VolumeKey = 0x260,
@@ -182,15 +213,30 @@ public static class HeadsetModels
             [0x620] = 0x630,
             [0x401] = 0x430,
         },
-        ExtraCategories = ["SHH", "Prm", "TX"],
-        ShowsGivenName = false,
+        ExtraCategories = ["SHH", "Prm", "TX", "NG"],
+        // Not among the 25 groups its firmware serves (SP2Tools F125): the
+        // noise gate is in NG, and the game and chat mix in GSI.
+        MissingCategories = ["SAF", "3DT"],
+        QuietsMonitoringWhileMuted = true,
+        HearingOffAfterEqualiser = "SHH",
+        LightReadFromTransmitter = 0x430,
+        ReadsMonitoringBack = true,
+        LogsInputs = true,
     };
 
-    public static readonly IReadOnlyList<HeadsetModel> All = [StealthProII, AtlasAir];
+    /// <summary>Whether the Atlas Air is among the headsets this release of Neap supports.</summary>
+    /// <remarks>
+    /// Off until its testers have confirmed what it does. While it is off Neap
+    /// does not know the Atlas Air: its hardware, speakers and microphone are
+    /// those of a headset Neap has no support for.
+    /// </remarks>
+    public const bool AtlasAirReleased = false;
+
+    public static readonly IReadOnlyList<HeadsetModel> All = AtlasAirReleased ? [StealthProII, AtlasAir] : [StealthProII];
 
     /// <summary>Every known headset's <see cref="HeadsetModel.SoundName"/>, apart by |, for finding its speakers and microphone.</summary>
     /// <remarks>Written out rather than built from <see cref="All"/>, as it is the default of many a parameter; a test keeps the two the same.</remarks>
-    public const string SoundNames = "stealth pro|atlas air";
+    public const string SoundNames = AtlasAirReleased ? "stealth pro|atlas air" : "stealth pro";
 
     /// <summary>Whether a speaker or microphone's name holds any of the fragments in <paramref name="match"/>, apart by |.</summary>
     public static bool SoundMatches(string name, string match = SoundNames) =>
@@ -203,9 +249,9 @@ public static class HeadsetModels
     /// <summary>Whether what goes with CrossPlay is shown: the dock, its ring and switching transmitters; see <see cref="HeadsetModel.CrossPlay"/>.</summary>
     public static bool ShowsCrossPlay(HeadsetModel? model) => model is null || model.CrossPlay;
 
-    /// <summary>The groups of settings to ask a headset for: every headset's, and any of its own.</summary>
+    /// <summary>The groups of settings to ask a headset for: every headset's it has, and any of its own.</summary>
     public static IEnumerable<string> CategoriesOf(HeadsetModel? model) =>
-        Verbs.SettingCategories.Concat(model?.ExtraCategories ?? []);
+        Verbs.SettingCategories.Except(model?.MissingCategories ?? []).Concat(model?.ExtraCategories ?? []);
 
     /// <summary>The key of a headset's copy of the system's output level: the Stealth Pro II's while it is not known.</summary>
     public static int VolumeKeyOf(HeadsetModel? model) => (model ?? StealthProII).VolumeKey;
@@ -231,10 +277,15 @@ public static class HeadsetModels
     public static int CheckedAs(HeadsetModel? model, int key) =>
         Registry.ByKey.TryGetValue(key, out var setting) ? OnHeadset(model, setting).Key : key;
 
-    /// <summary>The name shown above a headset's status: the one its owner gave it where the headset shows that, else its model's.</summary>
-    /// <returns>Null while no known headset is connected and it has no name.</returns>
-    public static string? Label(HeadsetModel? model, string? given) =>
-        model is { ShowsGivenName: false } ? model.Name : HeadsetLabel.Given(given) ?? model?.Name;
+    /// <summary>The name shown above a headset's status: the one its firmware gives the device connected, else its model's.</summary>
+    /// <remarks>
+    /// The firmware's name is the one the system and a phone show, such as
+    /// "Stealth Pro II Xbox", so it says which edition is connected. A name
+    /// someone gives it in a phone's or the system's settings stays there.
+    /// </remarks>
+    /// <returns>Null while no known headset is connected and its device gives no name.</returns>
+    public static string? Label(HeadsetModel? model, string? firmware) =>
+        string.IsNullOrWhiteSpace(firmware) ? model?.Name : firmware.Trim();
 
     /// <summary>What a headset reported, with each setting it keeps elsewhere moved to the Stealth Pro II's key, where the app looks for it.</summary>
     /// <remarks>

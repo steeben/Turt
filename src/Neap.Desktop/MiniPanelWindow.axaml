@@ -24,6 +24,11 @@
             <Setter Property="Padding" Value="8,0" />
         </Style>
 
+        <!-- The dial faded while it waits for chat apps, as Themes/Dial.axaml fades Home's. -->
+        <Style Selector="Grid.mixdial:disabled">
+            <Setter Property="Opacity" Value="0.35" />
+        </Style>
+
         <!-- Frosted glass, its colours from Themes/Frosty.axaml: solid until the blurred screen is laid behind it; see Frost. -->
         <Style Selector="Window.frosty Border#Card">
             <Setter Property="Background" Value="{DynamicResource NeapGlassSolidBrush}" />

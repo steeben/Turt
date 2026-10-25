@@ -42,9 +42,11 @@ public partial class SettingsPage : UserControl
         NeapControls.AsGroup(TrayIconOptions);
         SoundDevices.IsVisible = SoundFollowsHeadset.Supported;
         LookCard.IsVisible = TrayAvailability.Exists;
+        Advanced.IsVisible = Core.Firmware.FirmwareEdit.Released;
 
         _painting = true;
         MiniPanelSwitch.IsChecked = AppSettings.Current.MiniPanel;
+        FirmwareSwitch.IsChecked = AppSettings.Current.ShowFirmwareEdits;
         PaintTrayIcon();
         SoundFollows.IsChecked = AppServices.SoundFollow.Enabled;
         (AppSettings.Current.MiniPanelLook == PanelLook.FrostyGlass ? LookFrosty : LookStandard).IsChecked = true;
@@ -109,6 +111,15 @@ public partial class SettingsPage : UserControl
         ThemeSystem.IsCheckedChanged += OnThemeChosen;
         ThemeLight.IsCheckedChanged += OnThemeChosen;
         ThemeDark.IsCheckedChanged += OnThemeChosen;
+
+        FirmwareSwitch.IsCheckedChanged += (_, _) =>
+        {
+            if (_painting) return;
+            bool on = FirmwareSwitch.IsChecked == true;
+            AppSettings.Update(s => s.ShowFirmwareEdits = on);
+            AppLog.Write(on ? "firmware edits: the Firmware page is in the menu" : "firmware edits: the Firmware page is out of the menu");
+            (TopLevel.GetTopLevel(this) as MainWindow)?.FirmwareSettingChanged();
+        };
 
         CheckForUpdates.IsCheckedChanged += (_, _) =>
         {

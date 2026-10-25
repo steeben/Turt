@@ -9,6 +9,51 @@ Each change a person could notice gets a line under **Unreleased**, in the
 section it belongs to. At a release, Unreleased takes the version number
 and date.
 
+## Unreleased
+
+Brings in Neap 0.3.0. Turt's mini panel stays as it was, with its dial,
+rows and frosted glass.
+
+### Added
+
+- Live levels for the mix. On Windows, the game and chat card shows a meter
+  for each side beside the dial, in place of the thin arcs inside its ring.
+- What's new is always in Settings, beside Turt's version.
+- On its cable alone, the mix says the chat wheel can't move it, and what
+  still does.
+- With a headset whose settings Turt only reads, Home says so.
+
+### Changed
+
+- A redesign from Neap: a flatter, calmer look on every page of the window.
+  Home's mix is one shorter card, Audio holds what you hear and your
+  microphone in two sections, and the equalisers have a page of their own,
+  Equaliser, with a Game and a Microphone tab. Microphone has left the menu.
+- Sliders are the system toolkit's own, in Turt's colours, and a click
+  anywhere along one moves it there.
+- The headset is called what its firmware calls it, the name the system and
+  a phone show, such as "Stealth Pro II Xbox", rather than "My Headset".
+- What Turt says is shorter and clearer throughout.
+- On a small screen, such as the Steam Deck's, text, rows and switches step
+  up a size.
+- "Keep high-resolution audio" is gone from the Device page, as it is in
+  Neap: it restarted every app's sound, and only worked while something was
+  playing.
+
+### Fixed
+
+- The chat wheel no longer gets stuck at the middle.
+- The microphone follows every mute: the boom arm, the mute button, and the
+  boom microphone going in or out. Turt's own switch mutes the headset
+  itself while the boom is out.
+- The volume and microphone sliders no longer jump back while they are moved.
+- The Charging Dock's light sliders no longer stop partway through a drag.
+- Choosing chat apps opens in a dropdown, so the game and chat card keeps
+  one height.
+- On Linux, transmitters are kept from sleeping, and one that goes quiet is
+  restarted once Turt's newer access rule is in, or Home asks you to replug
+  it. While the system keeps Turt from the headset, it says "No access".
+
 ## 0.3.0 — 2026-10-22
 
 ### Changed

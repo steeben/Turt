@@ -41,6 +41,7 @@ public sealed class HeadsetClient : IDisposable
     private long _lastSet;
     private byte[]? _heard;
     private int _reads;
+    private byte[] _lastReport = [];
 
     /// <summary>How long a read waits after a write before it is sent.</summary>
     /// <remarks>
@@ -169,6 +170,9 @@ public sealed class HeadsetClient : IDisposable
     /// </remarks>
     public ushort ProductId => _transport.ProductId;
 
+    /// <summary>The name the device's firmware gives itself, or empty when it gives none; see <see cref="IHidTransport.Name"/>.</summary>
+    public string Name => _transport.Name;
+
     private int NextCounter() => _counter = (_counter + 1) & 0xFFFF;
 
     // -- reading -----------------------------------------------------------
@@ -199,8 +203,18 @@ public sealed class HeadsetClient : IDisposable
 
     /// <summary>Takes in one already-read report, returning any complete events found.</summary>
     /// <remarks>
+    /// <para>
     /// Split from <see cref="Receive"/> so a command exchange can hand on a
     /// report that was not its reply without losing a notification in it.
+    /// </para>
+    /// <para>
+    /// A report the same as the one read just before it is taken in once. The
+    /// Atlas Air's transmitter hands back the report it last gave until it has
+    /// a new one: one tester's recording holds a single signal report 4,998
+    /// times in under a second. Taken in again, a copy of a long reply's first
+    /// part leaves a reply that never closes, and every reply after it is
+    /// read as part of that one.
+    /// </para>
     /// </remarks>
     private List<DeviceEvent> Ingest(byte[] report)
     {
@@ -208,6 +222,8 @@ public sealed class HeadsetClient : IDisposable
         var payload = Frames.PayloadOf(report);
         if (!payload.IsEmpty || report is not [HidControl.InReportId, ..])
             _heard ??= report[..(report.AsSpan().LastIndexOfAnyExcept((byte)0) + 1)];
+        if (report.AsSpan().SequenceEqual(_lastReport)) return [];
+        _lastReport = report;
         if (payload.IsEmpty) return [];
 
         _buffer.AddRange(payload.ToArray());
@@ -224,10 +240,17 @@ public sealed class HeadsetClient : IDisposable
     /// completes rather than waiting out the whole window.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A notification from another category that arrives meanwhile is kept
     /// for <see cref="ReadOnce"/>. It is the headset's only word on that
     /// change: a chat wheel notch dropped here leaves the app's count behind
     /// the wheel's, and the next notch then reads as a turn of several.
+    /// </para>
+    /// <para>
+    /// Whatever is left unfinished from before is dropped as the request goes
+    /// out. A reply that never finished will not finish now, and kept, it
+    /// would swallow this one: the parser reads on from where it starts.
+    /// </para>
     /// </remarks>
     /// <exception cref="KeyNotFoundException">The category has no read verb.</exception>
     public Dictionary<string, JsonElement> ReadCategory(string category, TimeSpan wait)
@@ -239,6 +262,7 @@ public sealed class HeadsetClient : IDisposable
 
         var sinceWrite = Stopwatch.GetElapsedTime(_lastSet);
         if (_lastSet != 0 && sinceWrite < AfterWrite) Thread.Sleep(AfterWrite - sinceWrite);
+        _buffer.Clear();
         _transport.SendOutput(Frames.Build(verb, counter: NextCounter()));
 
         _heard = null;
@@ -290,14 +314,25 @@ public sealed class HeadsetClient : IDisposable
     /// answers nothing, so it costs the full window.
     /// </para>
     /// </remarks>
+    /// <param name="wait">How long each category is given to answer.</param>
+    /// <param name="categories">The categories to read: every headset's, unless given.</param>
+    /// <param name="unanswered">
+    /// Given, each category that gave no answer is added to it, with what
+    /// arrived instead in hex, or null when nothing did; see <see cref="Unanswered"/>.
+    /// </param>
     public Dictionary<string, JsonElement> ReadAll(
-        TimeSpan? wait = null, IEnumerable<string>? categories = null)
+        TimeSpan? wait = null, IEnumerable<string>? categories = null,
+        ICollection<(string Category, string? Heard)>? unanswered = null)
     {
         var window = wait ?? TimeSpan.FromMilliseconds(1200);
         var values = new Dictionary<string, JsonElement>();
         foreach (var category in categories ?? Verbs.SettingCategories)
-            foreach (var pair in ReadCategory(category, window))
+        {
+            var answer = ReadCategory(category, window);
+            if (answer.Count == 0) unanswered?.Add((category, Unanswered));
+            foreach (var pair in answer)
                 values[pair.Key] = pair.Value;
+        }
         return values;
     }
 
@@ -305,11 +340,18 @@ public sealed class HeadsetClient : IDisposable
     /// Discards anything already buffered or waiting on the wire.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <see cref="ReadCategory"/> returns on the first matching response it
     /// sees, which can be a leftover from a previous exchange; without a
     /// drain, writing a setting and reading it straight back shows the old
     /// value. Do not call this from a background reader: anything discarded
     /// is a notification nobody else will see.
+    /// </para>
+    /// <para>
+    /// A report the same as the one before it is the transmitter handing back
+    /// its last report (see <see cref="Ingest"/>), so nothing new is waiting.
+    /// The last one read is kept, so it is not taken in when handed back again.
+    /// </para>
     /// </remarks>
     /// <returns>The number of reports discarded.</returns>
     public int Drain(int limit = 200)
@@ -321,8 +363,9 @@ public sealed class HeadsetClient : IDisposable
         {
             try
             {
-                var payload = Frames.PayloadOf(_transport.GetInput());
-                if (payload.IsEmpty) break;
+                var report = _transport.GetInput();
+                if (Frames.PayloadOf(report).IsEmpty || report.AsSpan().SequenceEqual(_lastReport)) break;
+                _lastReport = report;
                 seen++;
             }
             catch (TransportException)
@@ -395,6 +438,18 @@ public sealed class HeadsetClient : IDisposable
         _transport.SendOutput(LoudnessBoost.SetFrame(db, RelayThroughBase));
         _lastSet = Stopwatch.GetTimestamp();
     }
+
+    /// <summary>Reads the gain the headset stores for mic monitoring, or null when it gives none; see <see cref="Sidetone"/>.</summary>
+    public float? ReadSidetone(TimeSpan wait) =>
+        Exchange(Sidetone.ReadFrame(RelayThroughBase), report => Sidetone.GainInReply(report), wait);
+
+    /// <summary>Reads what the headset's buttons and switches have done, or null when it gives no reading; see <see cref="HeadsetInputs"/>.</summary>
+    public InputReading? ReadInputs(TimeSpan wait) =>
+        Exchange(HeadsetInputs.ReadFrame(RelayThroughBase), report => HeadsetInputs.InReply(report), wait);
+
+    /// <summary>Reads the transmitter's light level as the transmitter gives it, or null when it gives none; see <see cref="TransmitterLight"/>.</summary>
+    public int? ReadTransmitterLight(TimeSpan wait) =>
+        Exchange(TransmitterLight.ReadFrame, report => TransmitterLight.LevelInReply(report), wait);
 
     /// <summary>
     /// Sends one request and watches the input report for a reply the matcher

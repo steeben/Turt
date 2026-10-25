@@ -220,6 +220,34 @@ public class PretendHeadsetTests
         Assert.Contains("1220", everything.Keys);
     }
 
+    [Fact]
+    public void AnAtlasAirsTransmitterGivesItsLightLevel()
+    {
+        using var client = HeadsetClient.Behind(allowWrites: _ => false, out _, devices: new PretendHeadset(atlas: true));
+        Assert.Equal(50, client!.ReadTransmitterLight(TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
+    public void AnAtlasAirGivesTheGainItStoresForMonitoring()
+    {
+        using var client = HeadsetClient.Behind(allowWrites: _ => false, out _, devices: new PretendHeadset(atlas: true));
+        Assert.Equal(Core.Audio.Sidetone.GainFor(20), client!.ReadSidetone(TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
+    public void AnAtlasAirGivesItsInputs()
+    {
+        using var client = HeadsetClient.Behind(allowWrites: _ => false, out _, devices: new PretendHeadset(atlas: true));
+        Assert.Equal(new Core.Hid.InputReading(0, 0, 0, 0), client!.ReadInputs(TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
+    public void AnAtlasAirGivesItsLoudnessLevel()
+    {
+        using var client = HeadsetClient.Behind(allowWrites: _ => false, out _, devices: new PretendHeadset(atlas: true));
+        Assert.Equal(Core.Audio.LoudnessBoost.StockDb, client!.ReadLoudness(TimeSpan.FromSeconds(1)));
+    }
+
     /// <summary>As one owner's recording showed it at the start.</summary>
     [Fact]
     public void AnAtlasAirAnswersAsOneOwnersDid()

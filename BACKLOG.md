@@ -7,6 +7,25 @@ to GitHub, these become issues.
 
 ## Next, after 0.2.0 (released 8 October)
 
+- **The Charging Dock's ring: can a microphone be stopped turning it white?
+  A desk investigation, with no device touched.** "Keep high-resolution
+  audio" was taken out of 0.3.0 (DECISIONS.md, 23 October). A USB capture
+  shows the dock turns the ring white when the PC starts the microphone
+  stream (48 kHz) and purple only when a playback stream starts at 96 kHz
+  (FINDINGS.md, "What the dock is sent when the ring turns white"). To find
+  out: which code in the dock's firmware turns a stream start into a ring
+  colour; whether any setting stops a microphone start changing it (SP2Tools
+  has two unproven candidates: the LED mode byte, NVKey `0xF607`, and the
+  RAM-only kvp `0x20`); and whether it is only a flash patch, which has no
+  proven recovery for the dock. SP2Tools has no map of the dock's ring code
+  and its dock image and Ghidra project were not in its folder on 23 October,
+  so they have to be found or rebuilt first. Rate every option before
+  touching the device. If the feature returns: reset only while something is
+  playing, and reword its text to what is known. Windows keeps sending
+  24-bit 96 kHz to the dock while the ring is white; not known: whether the
+  dock's radio link to the headset changes with it. Needs the headset only
+  to check what the desk work finds.
+
 - **Before the next public release: the Atlas Air carries only what its
   tester confirmed.** Its test build has every function, writes included
   (see DECISIONS.md). Before a release, set its list of functions, and
@@ -56,6 +75,27 @@ to GitHub, these become issues.
   Only unplugging the dock and plugging it back in brought it back. Whether
   the dock stopped answering or answered with something Neap could not read
   is not known; the log now records which, the next time. Needs the headset.
+- With the cable in, unplugging the Charging Dock left the headset silent
+  until it was switched off and on, while Neap showed it connected. Seen
+  once. Needs the headset.
+- On Linux, a transmitter whose replies come only on its interrupt pipe can
+  read as silent for as long as it stays open, if one direct reply comes back
+  empty but not all zeros. From the 0.3.0 code review; not seen on a device.
+- Switching Windows into high contrast, or between high contrast themes,
+  while Neap is open keeps the colours Neap read when it started.
+- The game equaliser's Bands and Parametric choice may show neither as
+  chosen after a headset change, as the hidden microphone panel's buttons
+  share its group. From the 0.3.0 code review; not reproduced, as the page
+  drawn in parametric mode showed it chosen.
+- A session recording writes both outputs every second when two of the
+  headset's outputs share a name. Whether Windows gives them the same name
+  is not confirmed.
+- Before the firmware page is released: ticking an edit, or restoring a
+  backup, rebuilds the list and drops keyboard focus; and progress is drawn
+  from the writer's own thread, which a real writer would not allow.
+- Before the Atlas Air is released: unmuting from Neap before the headset's
+  settings are read throws away the mic monitoring level kept from the mute,
+  so monitoring stays at nothing.
 
 ### Known limits, recorded rather than fixed
 
@@ -65,6 +105,13 @@ to GitHub, these become issues.
 
 ## Features
 
+- **Fewer words in the messages the state audit left long** (23 October):
+  the routing notices, up to 26 words; the Linux access messages, about 45;
+  and the folded sections' titles, such as "The audio format, power,
+  firmware, serial number and everything the headset reports".
+- **Say when the headset's settings ride on a transmitter that isn't
+  carrying its sound.** With sound on one transmitter and settings on
+  another, nothing tells you that unplugging the second loses the settings.
 - **Move the headset between PCs without switching it off and on.**
   *High priority.* The headset keeps its settings on the transmitter it was
   switched on with, and CrossPlay moves only its sound, so after moving
@@ -226,6 +273,11 @@ The checks themselves are in [CONTRIBUTING.md](CONTRIBUTING.md). Owed:
   "20 kHz", and "1,500 Hz" gives 20 Hz.
 - The parametric "can't match this exactly" note ignores the range above
   18 kHz, where a boost at 20 kHz misses by about 8 dB on the plot.
+- A loudness boost write is missing from a session recording's list of
+  writes, and nothing in Core keeps it to headsets where the command is
+  known; only the screen hides the control.
+- The chat app list names an app by its program file, such as "ms-teams",
+  when Windows gives no display name.
 
 ## Last in line
 

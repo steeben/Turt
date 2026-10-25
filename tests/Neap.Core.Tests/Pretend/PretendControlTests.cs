@@ -30,6 +30,57 @@ public class PretendControlTests
     }
 
     [Fact]
+    public void CountsTheReadsOfEachGroup()
+    {
+        var (headset, control) = Make();
+        using var client = new HeadsetClient(allowWrites: false, transport: headset.Open());
+        client.ReadCategory("Mic", TimeSpan.FromSeconds(1));
+        client.ReadCategory("Mic", TimeSpan.FromSeconds(1));
+
+        var reads = Reply(control, "reads").GetProperty("result");
+
+        Assert.Equal(2, reads.GetProperty("Mic").GetInt32());
+        Reply(control, "clear");
+        Assert.False(Reply(control, "reads").GetProperty("result").TryGetProperty("Mic", out _));
+    }
+
+    [Fact]
+    public void FocusMovesThroughWhatTheAppGives()
+    {
+        var (_, control) = Make();
+        var asked = new List<FocusMove>();
+        control.MoveFocus = move => { asked.Add(move); return new System.Text.Json.Nodes.JsonObject { ["name"] = "Audio" }; };
+
+        Assert.Equal("Audio", Reply(control, "focus next").GetProperty("result").GetProperty("name").GetString());
+        Reply(control, "focus previous");
+        Reply(control, "focus first");
+
+        Assert.Equal([FocusMove.Next, FocusMove.Previous, FocusMove.First], asked);
+    }
+
+    [Fact]
+    public void APageOpensByItsNameAndAnUnknownOneIsRefused()
+    {
+        var (_, control) = Make();
+        var opened = new List<string>();
+        control.OpenPage = page => { opened.Add(page); return page == "audio"; };
+
+        Assert.True(Reply(control, "page audio").GetProperty("ok").GetBoolean());
+        Assert.False(Reply(control, "page nowhere").GetProperty("ok").GetBoolean());
+        Assert.Equal(["audio", "nowhere"], opened);
+    }
+
+    [Fact]
+    public void FocusWithNoWindowOrNoDirectionIsRefused()
+    {
+        var (_, control) = Make();
+        Assert.False(Reply(control, "focus next").GetProperty("ok").GetBoolean());
+
+        control.MoveFocus = _ => null;
+        Assert.False(Reply(control, "focus sideways").GetProperty("ok").GetBoolean());
+    }
+
+    [Fact]
     public void AReportedChangeReachesTheHeadsetByNameOrNumber()
     {
         var (headset, control) = Make();

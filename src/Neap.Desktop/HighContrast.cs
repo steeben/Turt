@@ -94,6 +94,8 @@ internal static class HighContrast
         Brush("NeapPresetHoverBrush", p.Window);
         Brush("NeapCurveGapBrush", p.Gray);
         Brush("NeapPresetSelectedBrush", p.Window);
+        // A chosen list item or option keeps the text colour, so it is not filled in the highlight.
+        Brush("NeapSelectedBrush", p.Window);
 
         // Cards, setting rows and tiles share the window colour here, so an outline is all that sets their edge.
         Brush("NeapCardStrokeBrush", p.Text);
@@ -115,6 +117,15 @@ internal static class HighContrast
         Brush("NeapTileDisabledTextBrush", p.Gray);
         Brush("NeapTileOnDisabledBrush", p.Gray);
         Brush("NeapTileOnDisabledTextBrush", p.Window);
+
+        // A quick tile has no switch to say it is on, so it is outlined, and
+        // filled in the highlight while on, as a chosen segment is.
+        Brush("NeapQuickStrokeBrush", p.Text);
+
+        // A slider's thumb in the text colour, so it stands out from the highlight fill beside it.
+        Brush("NeapSliderThumbBrush", p.Text);
+        Brush("NeapQuickOnBrush", p.Highlight);
+        Brush("NeapQuickOnTextBrush", p.HighlightText);
 
         // The page and the rail share the window's colour; the chosen place
         // is marked by its bar, not by a fill.

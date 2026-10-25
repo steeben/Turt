@@ -20,7 +20,7 @@ and its battery warnings.
 
 | System | Neap connects | How sure | Next |
 |---|---|---|---|
-| Windows | Yes: Charging Dock, USB Transmitter and USB-C cable | Confirmed | — |
+| Windows | Yes: Charging Dock, USB Transmitter and USB-C cable | Confirmed | Once, unplugging the Charging Dock with the cable in left the headset silent until it was switched off and on. Repeat it to learn whether it always does. On the cable alone the chat wheel reaches nothing, read or sent, with `0x500` at 0 or 1; the dial and keys still move the mix. |
 | Linux, Steam Deck | Yes, after the one-time access rule | Confirmed | — |
 | Linux, other systems | Only against the pretend headset | Untried | A tester with another system. |
 
@@ -57,7 +57,7 @@ system tried with a real headset.
 
 | Feature | Turtle Beach | Neap can | Neap | Windows | Linux | Keys | Next |
 |---|---|---|---|---|---|---|---|
-| Mute | Listed | Yes | Has | Confirmed | Confirmed | Done on the PC; `0x600` reads the boom arm, and a write to it is ignored | — |
+| Mute | Listed | Yes | Has | Confirmed | Confirmed | Done on the PC; `0x600` reads the boom arm, and a write to it is ignored; `0x650` reads the built-in microphones' mute | With the boom in, nothing found mutes it on the headset, `0x3D` included; see FINDINGS. |
 | Sensitivity | Listed | Yes | Has | Confirmed | Confirmed | Done on the PC; `0x610` mirrors the PC's microphone level | — |
 | Monitoring, on/off and level | Listed | Yes | Has | Confirmed | Confirmed | `0x620` | — |
 | Noise gate, on/off | Listed | Yes | Has | Confirmed | Confirmed | `0x700` | — |
@@ -77,7 +77,7 @@ system tried with a real headset.
 
 | Feature | Turtle Beach | Neap can | Neap | Windows | Linux | Keys | Next |
 |---|---|---|---|---|---|---|---|
-| Mode button: noise cancellation, cycle game presets, noise gate | Listed | Yes | Has | Confirmed | Confirmed | `0xB20` | While Neap runs, the Mode button steps through noise cancellation, transparency and off. |
+| Mode button: noise cancellation, cycle game presets, noise gate | Listed | Yes | Has | Confirmed | Confirmed | `0xB20` | Stock firmware: while Neap runs, the Mode button steps through noise cancellation, transparency and off. Edited firmware (chosen on Controls, hidden until firmware edits are released): the headset steps through off, transparency and noise cancellation itself, and Neap only follows; on the owner's headset Neap shows Transparency while the headset is in noise cancellation; see Evidence. |
 | Lower wheel: monitoring, game and chat mix, bass, treble, noise gate | Listed | Yes | Has | Confirmed | Confirmed | `0xA20` | — |
 
 ### Additional settings
@@ -88,6 +88,7 @@ system tried with a real headset.
 | Spare battery charging in the dock | Not listed | Yes | Has | Confirmed | Confirmed | `0x250` | Shown with a bolt while it charges, since the level isn't reliable then. |
 | Drivers status | Listed | — | Not planned | — | — | — | Swarm II's own drivers. |
 | Connection, transmitter status, platform | Listed | Yes | Has | Confirmed | Confirmed | `0x290`, `0x400`–`0x460` | — |
+| Headset name | Not listed | Shown; changing it is unknown | Has | Confirmed on the dock | Untried; the reading passes a test laid out as sysfs is, on Linux | The USB product string of the piece Neap talks through: "Stealth Pro II Xbox" from the white Xbox dock (Seen, and read by Neap on the headset); "Stealth Pro II Xbox Headset" from the headset on its cable (Seen in Windows' device list). Shown as the firmware gives it, so the cable alone shows the longer name. With the dock answering too, Neap goes on talking through the dock and shows its name. `0x220`, "My Headset" from the factory, is no longer shown | Check the name on the USB Transmitter and the PC edition, and on Linux. A rename of the Bluetooth name (SP2Tools: NVKey `0xF202`) is not offered. |
 | Pop-up battery warnings | Listed | Yes, on the PC | Missing | — | — | Done on the PC | Decide whether Neap should warn. |
 | Battery in the notification area | Listed | Yes | Has | Confirmed | Confirmed | — | Shown in the icon's status. |
 | Auto shut-off (off, 5, 10, 20, 30 min) | Listed | Yes | Has | Confirmed | Confirmed | `0x280` | — |
@@ -113,6 +114,7 @@ system tried with a real headset.
 |---|---|---|---|---|---|---|---|
 | Volume wheel | Quick start guide | — | Has | Confirmed | Confirmed | `0x260` | — |
 | Flip-to-mute microphone | Quick start guide | — | Has | Confirmed | Confirmed | `0x600` | — |
+| Mute button, with the boom microphone off | Quick start guide | — | Has | Confirmed | Untried | `0x650` | The button is followed, and a write to `0x650` mutes and unmutes with the headset's tone. `0x640` says which microphone is in use and is reported the moment the boom is unplugged or plugged in. Neap follows the arm with the boom in and the button with it out. With the boom in the button does nothing, and the headset undoes a write to `0x650`, so Neap's switch mutes in Windows then and on the headset with the boom out. Confirm the switch with the boom on and off. |
 | CrossPlay button (switch transmitters) | Quick start guide | — | Has | Confirmed | Confirmed | `0x400`–`0x460` | Moving between PCs needs the headset switched off and on; see Problems. |
 | Bluetooth button | Quick start guide | — | Has | Confirmed | Confirmed | `0x290`, `0x320` | — |
 
@@ -129,6 +131,12 @@ system tried with a real headset.
 
 ## Next
 
+- [ ] Firmware edit, in SP2Tools: report `0x760` on each level change of the
+      noise cycle, and set a mark Neap can read that says which edits are
+      installed.
+- [ ] Neap, once SP2Tools has chosen the mark: read it, show each screen for
+      the edits found, and keep the Stock or Edited choice on Controls only as a
+      fallback.
 - [ ] Check whether Swarm II's desktop app has wake on motion, and correct
       the README if it does.
 - [ ] Find where the per-transmitter voice prompt (none, 1–4) is kept.
@@ -141,6 +149,20 @@ system tried with a real headset.
 
 Newest first. [FINDINGS.md](../../FINDINGS.md) has every key and how each
 was confirmed.
+
+- 2026-10-22 — Owner's headset, edited firmware, Neap recording of one full
+  Mode button cycle: four presses gave three reports, all `0x750`. The step
+  from transparency to noise cancellation, which changes only `0x760`, sent
+  nothing, and Neap went on showing Transparency although it asks the `SAF`
+  group about every 0.7 seconds. So the edit changes the level the headset
+  uses but not the `0x760` it reports, pushed or asked. A fix in Neap cannot
+  help; the edit has to update and announce `0x760` as the stock path does.
+
+- 2026-10-22 — SP2Tools F090, proven on the owner's headset: edited firmware
+  makes the Mode button step off, transparency, noise cancellation, with a
+  tone for each, and keeps `0x750` and `0x760` in step as it goes (read from
+  the code, not yet seen on the wire). Neap now asks which firmware a headset
+  has, since the headset reports the same version either way.
 
 - 2026-10-17 — Turtle Beach's PC article read: the feature list above. It
   adds a per-transmitter voice prompt (none, 1–4) and lists wake on motion in

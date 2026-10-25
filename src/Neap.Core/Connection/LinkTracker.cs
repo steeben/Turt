@@ -102,6 +102,16 @@ public sealed record HeadsetStatus(
     /// </remarks>
     public bool SwitchedOff => Link == Link.Quiet && Route == Route.DirectUsb;
 
+    /// <summary>Connected by its USB-C cable alone, where the chat wheel sends nothing.</summary>
+    /// <remarks>
+    /// The headset gives the wheel's turns only over a transmitter's wireless
+    /// link: on the cable alone it neither sends them nor updates the reading.
+    /// </remarks>
+    public bool WheelOffOnCable => Link == Link.Connected && Route == Route.DirectUsb;
+
+    /// <summary>The chat wheel's turns cannot reach the app, so only the dial and the keys move the mix.</summary>
+    public bool WheelUnreachable => SettingsUnreachable || NoSound || WheelOffOnCable;
+
     /// <summary>The state in one line for a record, such as "Connected via Charging Dock, no sound".</summary>
     /// <remarks>The detail is left out: it is wording, and changes without the state changing.</remarks>
     public string Summary => Link
@@ -174,7 +184,7 @@ public sealed class LinkTracker(LinkWords words, Func<TimeSpan> clock, Func<bool
     private ushort? _lostDevice;
     private string _soundOn = "";
     private Route? _answeredOn;
-    private (bool Elsewhere, Route Route, string Adapter, string Carrying, string Device, string Product)? _held;
+    private (bool Elsewhere, Route Route, string Adapter, string Carrying, string Product)? _held;
     private TimeSpan? _heldSince;
 
     public HeadsetStatus Status { get; private set; } =
@@ -249,7 +259,7 @@ public sealed class LinkTracker(LinkWords words, Func<TimeSpan> clock, Func<bool
     /// <paramref name="elsewhere"/>.
     /// </summary>
     public HeadsetStatus? Answering(bool elsewhere, Route route, string adapter,
-        string carrying, string device, string product)
+        string carrying, string product)
     {
         // Answering over its cable with no sound device: switched off, or
         // switching on and not finished. Neither is connected, so hold off
@@ -280,7 +290,7 @@ public sealed class LinkTracker(LinkWords words, Func<TimeSpan> clock, Func<bool
             && _answeredOn is { } before && before != route
             && _soundFlag is not > 0)
         {
-            _held = (elsewhere, route, adapter, carrying, device, product);
+            _held = (elsewhere, route, adapter, carrying, product);
             _heldSince ??= clock();
             return null;
         }
@@ -288,14 +298,14 @@ public sealed class LinkTracker(LinkWords words, Func<TimeSpan> clock, Func<bool
         _heldSince = null;
         _answeredOn = route;
 
-        if (!elsewhere) return Set(Link.Connected, route, carrying, device, product);
+        if (!elsewhere) return Set(Link.Connected, route, carrying, "", product);
 
         // Sound on one transmitter, controls through another, and all of it
         // working. The headset keeps its controls on the transmitter it was
         // switched on with, and CrossPlay moves only its sound. So the device
         // answering is the headset, connected, and its sound is wherever it
         // selected, which is what Windows has to be pointed at.
-        return Set(Link.Connected, RouteOfProduct(product), carrying, device, product,
+        return Set(Link.Connected, RouteOfProduct(product), carrying, "", product,
             controlVia: adapter);
     }
 
@@ -308,7 +318,7 @@ public sealed class LinkTracker(LinkWords words, Func<TimeSpan> clock, Func<bool
     /// without the headset reporting anything.
     /// </remarks>
     public HeadsetStatus? Cable(bool elsewhere, Route route, string adapter,
-        string carrying, string device, string product)
+        string carrying, string product)
     {
         if (route != Route.DirectUsb) return null;
         if (!cabled())
@@ -322,7 +332,7 @@ public sealed class LinkTracker(LinkWords words, Func<TimeSpan> clock, Func<bool
         // The sound device came back after Answering held off for it, or
         // after the headset was off: now it is connected.
         _offSince = null;
-        return Answering(elsewhere, route, adapter, carrying, device, product);
+        return Answering(elsewhere, route, adapter, carrying, product);
     }
 
     /// <summary>
@@ -406,8 +416,7 @@ public sealed class LinkTracker(LinkWords words, Func<TimeSpan> clock, Func<bool
     {
         // A held-back answer is proved by its sound link coming up.
         if (_held is { } held && _soundFlag > 0)
-            return Answering(held.Elsewhere, held.Route, held.Adapter, held.Carrying,
-                held.Device, held.Product);
+            return Answering(held.Elsewhere, held.Route, held.Adapter, held.Carrying, held.Product);
 
         var current = Status;
         if (current.Link != Link.Connected) return null;

@@ -118,12 +118,15 @@ function Wait-Until([scriptblock]$Condition, [double]$Seconds = 6) {
 }
 
 # True once a reading has come out the same three times running, so a layout
-# that is still settling after a resize is not measured halfway.
+# that is still settling after a resize is not measured halfway. A reading
+# that fails inside UI Automation while the page is rebuilt counts as one
+# that has not settled.
 function Wait-Stable([scriptblock]$Read, [double]$Seconds = 3) {
     $last = $null; $same = 0
     $clock = [Diagnostics.Stopwatch]::StartNew()
     while ($clock.Elapsed.TotalSeconds -lt $Seconds) {
-        $now = & $Read
+        try { $now = & $Read }
+        catch [System.Management.Automation.MethodInvocationException] { $now = [guid]::NewGuid() }
         if ($now -eq $last) { $same++ } else { $same = 0; $last = $now }
         if ($same -ge 3) { return $true }
         Start-Sleep -Milliseconds 80
@@ -134,9 +137,17 @@ function Wait-Stable([scriptblock]$Read, [double]$Seconds = 3) {
 function New-Condition([string]$Property, $Value) {
     New-Object System.Windows.Automation.PropertyCondition($A::$Property, $Value)
 }
-function Find-Named([string]$Name) { $script:Window.FindFirst($Scope::Descendants, (New-Condition NameProperty $Name)) }
-function Find-Id([string]$Id) { $script:Window.FindFirst($Scope::Descendants, (New-Condition AutomationIdProperty $Id)) }
-function Find-All([string]$Name) { @($script:Window.FindAll($Scope::Descendants, (New-Condition NameProperty $Name))) }
+# A search made while a page is being rebuilt can fail inside UI Automation;
+# it is asked again a few times before the failure is let through.
+function Search([scriptblock]$Find) {
+    for ($try = 1; ; $try++) {
+        try { return (& $Find) }
+        catch [System.Management.Automation.MethodInvocationException] { if ($try -ge 5) { throw }; Start-Sleep -Milliseconds 200 }
+    }
+}
+function Find-Named([string]$Name) { Search { $script:Window.FindFirst($Scope::Descendants, (New-Condition NameProperty $Name)) } }
+function Find-Id([string]$Id) { Search { $script:Window.FindFirst($Scope::Descendants, (New-Condition AutomationIdProperty $Id)) } }
+function Find-All([string]$Name) { @(Search { $script:Window.FindAll($Scope::Descendants, (New-Condition NameProperty $Name)) }) }
 
 # The element of this name that is lowest on the screen, for when the banner and
 # the page both say the same thing.
@@ -150,7 +161,7 @@ function Find-Text([string]$Name) {
 }
 function Test-Present($Element) { $null -ne $Element -and -not $Element.Current.IsOffscreen }
 function Get-Texts {
-    @($script:Window.FindAll($Scope::Descendants, (New-Condition ControlTypeProperty ([System.Windows.Automation.ControlType]::Text)))) |
+    @(Search { $script:Window.FindAll($Scope::Descendants, (New-Condition ControlTypeProperty ([System.Windows.Automation.ControlType]::Text))) }) |
         ForEach-Object { $_.Current.Name }
 }
 function Get-Popups {
@@ -171,9 +182,36 @@ function Press($Element) {
     }
     $found = $null
     if ($Element.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$found)) { $found.Select(); return }
-    # A menu item that only takes the keyboard: focus it and press Enter.
+    # A menu item that only takes the keyboard: focus it and press Enter. On a
+    # desktop of its own, where the key would land on the person's, the
+    # practice run presses it from inside instead.
+    if ($env:NEAP_QUIET_DESKTOP) { Send-Pretend "press $($Element.Current.Name)" | Out-Null; return }
     $Element.SetFocus()
     (New-Object -ComObject WScript.Shell).SendKeys('{ENTER}')
+}
+# Sends one line to a practice run's pipe and gives its answer; see
+# PretendControl for the lines it takes. The pipe serves one script at a time,
+# so this is for a check that does not hold it open itself.
+function Send-Pretend([string]$Line) {
+    $stream = New-Object System.IO.Pipes.NamedPipeClientStream('.', 'Neap.Pretend', [System.IO.Pipes.PipeDirection]::InOut)
+    try {
+        $stream.Connect(5000)
+        $writer = New-Object System.IO.StreamWriter($stream)
+        $writer.AutoFlush = $true
+        $writer.WriteLine($Line)
+        $reply = (New-Object System.IO.StreamReader($stream)).ReadLine() | ConvertFrom-Json
+        if (-not $reply.ok) { throw "the practice run would not do '$Line': $($reply.error)" }
+        $reply.result
+    }
+    finally { $stream.Dispose() }
+}
+# Opens a page from the rail by its name, and waits until it has drawn: its
+# heading is there and what is on it has stopped moving.
+function Open-Page([string]$Name) {
+    $item = Find-All $Name | Where-Object { $_.GetSupportedPatterns() -contains [System.Windows.Automation.SelectionItemPattern]::Pattern } | Select-Object -First 1
+    $item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+    Wait-Until { (Get-Texts) -contains $Name } 5 | Out-Null
+    Wait-Stable { (Get-Texts) -join ';' } | Out-Null
 }
 function Open-Menu($Element) {
     try { $Element.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand() } catch { Press $Element }

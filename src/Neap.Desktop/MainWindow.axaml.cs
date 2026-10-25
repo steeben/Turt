@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Neap.Core;
 using Neap.Desktop.Controls;
@@ -51,15 +52,15 @@ public partial class MainWindow : Window
         // without taking the keyboard from them.
         if (Pretend.Behind) ShowActivated = false;
 
-        Activated += (_, _) => WindowPresence.Set(true);
-        Deactivated += (_, _) => WindowPresence.Set(false);
+        Activated += (_, _) => WindowPresence.Set(this, true);
+        Deactivated += (_, _) => WindowPresence.Set(this, false);
 
         Places.SelectionChanged += (_, _) => OnChosen(Places, Foot);
         Foot.SelectionChanged += (_, _) => OnChosen(Foot, Places);
         SizeChanged += (_, e) =>
         {
             FitRail(e.NewSize.Width);
-            FitDensity(e.NewSize);
+            FitDensity();
         };
         NavToggle.Click += (_, _) => Rail.IsPaneOpen = !Rail.IsPaneOpen;
 
@@ -74,6 +75,7 @@ public partial class MainWindow : Window
         Body.PageTransition = new EntranceTransition();
         DrawOwnTitleBar();
 
+        FirmwareSettingChanged();
         Open(Pretend.Page ?? "home");
         StartTray();
         AddHandler(KeyDownEvent, OnPlaceKey, RoutingStrategies.Tunnel);
@@ -101,17 +103,35 @@ public partial class MainWindow : Window
     /// <summary>Gets the page on show.</summary>
     public Control? CurrentPage => Body.Content as Control;
 
+    /// <summary>Puts the Firmware page in the menu when it is asked for in Settings, and takes it out when it is not.</summary>
+    /// <remarks>
+    /// Taken out of the list rather than hidden: the list's panel shows every
+    /// item it lays out, whatever the item says. Never shown in a release
+    /// without firmware edits (<see cref="Core.Firmware.FirmwareEdit.Released"/>),
+    /// except to a pretend run asked to open it, so a picture of it can be taken.
+    /// </remarks>
+    public void FirmwareSettingChanged()
+    {
+        bool wanted = (Core.Firmware.FirmwareEdit.Released && AppSettings.Current.ShowFirmwareEdits)
+            || (Pretend.Active && Pretend.Page == "firmware");
+        bool listed = Places.Items.Contains(FirmwareNav);
+        if (wanted && !listed) Places.Items.Add(FirmwareNav);
+        else if (!wanted && listed) Places.Items.Remove(FirmwareNav);
+    }
+
     /// <summary>Opens the page with this tag, and marks its place in the rail.</summary>
-    public void Open(string page)
+    /// <returns>Whether there is a page with that tag.</returns>
+    public bool Open(string page)
     {
         foreach (var rail in new[] { Places, Foot })
             foreach (var item in rail.Items.OfType<NavItem>())
                 if (item.Page == page)
                 {
                     rail.SelectedItem = item;
-                    return;
+                    return true;
                 }
         AppLog.Write($"no page with the tag {page}: stayed where it was");
+        return false;
     }
 
     /// <summary>
@@ -127,12 +147,15 @@ public partial class MainWindow : Window
         NavToggle.IsVisible = folded;
     }
 
-    /// <summary>Gets whether the window is drawn at touch size, which the mini panel follows.</summary>
-    public bool IsTouch => Classes.Contains("touch");
-
-    /// <summary>Marks the window <c>touch</c> while it is small enough for the roomier size, which the styles take their larger sizes from.</summary>
-    private void FitDensity(Size size) =>
-        Classes.Set("touch", Density.For(size.Width, size.Height) == DensityMode.Touch);
+    /// <summary>Marks the window <c>touch</c> while its screen is small enough for the roomier size, which the styles take their larger sizes from.</summary>
+    /// <remarks>Looked at again as the window changes size, which it does as it moves to a screen at another scaling.</remarks>
+    private void FitDensity()
+    {
+        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        bool small = screen is not null
+            && Density.For(screen.WorkingArea.Width / screen.Scaling, screen.WorkingArea.Height / screen.Scaling) == DensityMode.Touch;
+        Classes.Set("touch", Pretend.Touch || small);
+    }
 
     /// <summary>
     /// Where the app draws its own title bar, as on Windows, with the system's
@@ -176,6 +199,7 @@ public partial class MainWindow : Window
                 "controls" => new ControlsPage(),
                 "profiles" => new ProfilesPage(),
                 "device" => new DevicePage(),
+                "firmware" => new FirmwarePage(),
                 "settings" => new SettingsPage(),
                 _ => new NotYet(),
             };
@@ -192,6 +216,9 @@ public partial class MainWindow : Window
     {
         base.OnLoaded(e);
         FitRail(Bounds.Width);
+        if (Pretend.Active)
+            Pretend.Drives(move => PretendFocus.Move(this, move), page => Dispatcher.UIThread.Invoke(() => Open(page)),
+                () => Dispatcher.UIThread.Invoke(() => { if (_mini is null) ToggleMini(null); }), PretendPress.Press);
         if (Pretend.Snapshot is { } file) _ = SaveAndExit(file);
 
         // A launch at sign-in lives in the notification area rather than open
