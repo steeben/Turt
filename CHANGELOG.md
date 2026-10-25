@@ -25,6 +25,11 @@ rows and frosted glass.
 
 ### Changed
 
+- Settings' System tray icon is a dropdown rather than a list of five
+  choices.
+- In the mini panel, the equaliser preset's name sits in the middle of its
+  button again, and on frosted glass the button is a wash of the tint rather
+  than solid grey.
 - A redesign from Neap: a flatter, calmer look on every page of the window.
   Home's mix is one shorter card, Audio holds what you hear and your
   microphone in two sections, and the equalisers have a page of their own,

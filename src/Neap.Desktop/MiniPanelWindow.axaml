@@ -24,6 +24,29 @@
             <Setter Property="Padding" Value="8,0" />
         </Style>
 
+        <!--
+            The preset picker keeps the toolkit's even padding, so its name and
+            arrow sit in the middle of the short row; the window's buttons are
+            padded heavier above for a single line of Figtree.
+        -->
+        <Style Selector="Button#Preset">
+            <Setter Property="Padding" Value="8,5,8,6" />
+        </Style>
+
+        <!-- On frosted glass the picker is a wash of the tint, as the rows are, not a solid step. -->
+        <Style Selector="Window.frosty Button#Preset">
+            <Setter Property="Background" Value="{DynamicResource NeapQuietBrush}" />
+        </Style>
+        <Style Selector="Window.frosty Button#Preset:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NeapQuietHoverBrush}" />
+        </Style>
+        <Style Selector="Window.frosty Button#Preset:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NeapQuietHoverBrush}" />
+        </Style>
+        <Style Selector="Window.frosty Button#Preset:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NeapQuietBrush}" />
+        </Style>
+
         <!-- The dial faded while it waits for chat apps, as Themes/Dial.axaml fades Home's. -->
         <Style Selector="Grid.mixdial:disabled">
             <Setter Property="Opacity" Value="0.35" />

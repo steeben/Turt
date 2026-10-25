@@ -136,40 +136,16 @@
                     x:Name="TrayIconCard"
                     loc:Uid.Value="Settings_TrayIcon"
                     Icon="{StaticResource IconCharging}">
-                    <!-- Five choices are too many for a row of segments, so they are listed under the name. -->
-                    <c:SettingsCard.Below>
-                        <StackPanel
-                            x:Name="TrayIconOptions"
-                            Margin="0,8,0,0"
-                            loc:Uid.Value="Settings_TrayIconChoice"
-                            Spacing="{StaticResource NeapSpaceS}">
-                            <RadioButton
-                                x:Name="TrayIconLogo"
-                                loc:Uid.Value="Settings_TrayIconLogo"
-                                GroupName="TrayIcon"
-                                Theme="{StaticResource ChoiceRow}" />
-                            <RadioButton
-                                x:Name="TrayIconBattery"
-                                loc:Uid.Value="Settings_TrayIconBattery"
-                                GroupName="TrayIcon"
-                                Theme="{StaticResource ChoiceRow}" />
-                            <RadioButton
-                                x:Name="TrayIconPercentage"
-                                loc:Uid.Value="Settings_TrayIconPercentage"
-                                GroupName="TrayIcon"
-                                Theme="{StaticResource ChoiceRow}" />
-                            <RadioButton
-                                x:Name="TrayIconHeadsetBattery"
-                                loc:Uid.Value="Settings_TrayIconHeadsetBattery"
-                                GroupName="TrayIcon"
-                                Theme="{StaticResource ChoiceRow}" />
-                            <RadioButton
-                                x:Name="TrayIconHeadsetPercentage"
-                                loc:Uid.Value="Settings_TrayIconHeadsetPercentage"
-                                GroupName="TrayIcon"
-                                Theme="{StaticResource ChoiceRow}" />
-                        </StackPanel>
-                    </c:SettingsCard.Below>
+                    <ComboBox
+                        x:Name="TrayIconChoice"
+                        MinWidth="240"
+                        loc:Uid.Value="Settings_TrayIconChoice">
+                        <ComboBoxItem loc:Uid.Value="Settings_TrayIconLogo" />
+                        <ComboBoxItem loc:Uid.Value="Settings_TrayIconBattery" />
+                        <ComboBoxItem loc:Uid.Value="Settings_TrayIconPercentage" />
+                        <ComboBoxItem loc:Uid.Value="Settings_TrayIconHeadsetBattery" />
+                        <ComboBoxItem loc:Uid.Value="Settings_TrayIconHeadsetPercentage" />
+                    </ComboBox>
                 </c:SettingsCard>
             </StackPanel>
 
